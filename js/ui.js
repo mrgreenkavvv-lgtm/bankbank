@@ -10,7 +10,7 @@
   var last = {
     capital: null, date: null, dayline: null, stage: null, kpi: null, delta: null,
     liquid: null, flow: null, vip: null, queue: null, counts: null, events: null, bankrupt: null,
-    manager: null, 'ap-name': null, 'ap-eta': null,
+    manager: null, 'ap-name': null, 'ap-eta': null, vipControl: null,
     portfolio: null, profit: null, profitNote: null, rep: null, ratios: null,
     branches: null, kpiBranches: null, branchesPanel: null,
     rates: null, stocks: null, stocksSub: null, stocksCount: null, myLoan: null, myDep: null,
@@ -127,10 +127,87 @@
   }
 
   /* ---------- Очередь заявок ---------- */
+  /* ---------- VIP-порог ---------- */
+  var VIP_MIN = 100000;
+  var VIP_MAX = 100000000;
+
+  function vipToSlider(value) {
+    var v = Math.max(VIP_MIN, Math.min(VIP_MAX, value));
+    return Math.round((Math.log(v / VIP_MIN) / Math.log(VIP_MAX / VIP_MIN)) * 1000);
+  }
+
+  function sliderToVip(pos) {
+    var raw = VIP_MIN * Math.pow(VIP_MAX / VIP_MIN, pos / 1000);
+    return Math.round(raw / 100000) * 100000;
+  }
+
+  function vipRowHtml(type, label) {
+    var value = type === 'deposit' ? state.vipThresholdDeposit : state.vipThresholdLoan;
+    var pos = vipToSlider(value);
+
+    return '<div class="vip-row">' +
+      '<div class="between"><span class="small">' + label + '</span>' +
+        '<input class="vip-input" type="number" min="100000" max="100000000" step="100000" value="' + value +
+          '" data-vip-input="' + type + '" aria-label="' + label + ', порог">' +
+      '</div>' +
+      '<input type="range" min="0" max="1000" step="1" value="' + pos + '" data-vip-slider="' + type +
+        '" aria-label="' + label + ', ползунок">' +
+      '<div class="range-scale"><span>100 тыс</span><span>' + money(value) + '</span><span>100 млн</span></div>' +
+    '</div>';
+  }
+
+  function renderVipControl() {
+    var box = document.querySelector('[data-ui="vip-control"]');
+    if (!box) return;
+
+    var sig = state.vipThresholdLoan + '|' + state.vipThresholdDeposit;
+    if (last.vipControl === sig) return;
+    last.vipControl = sig;
+
+    box.innerHTML = '<div class="threshold">' +
+      '<div style="flex:1">' +
+        '<div class="lbl"><span>VIP-порог — выше этой суммы решаете вы</span>' +
+          '<b>' + money(state.vipThresholdLoan) + '</b></div>' +
+        vipRowHtml('loan', 'Кредиты') +
+        vipRowHtml('deposit', 'Вклады') +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderClientFilters() {
+    var box = document.querySelector('[data-ui="client-filters"]');
+    if (!box) return;
+
+    var queue = state.queue;
+    var counts = {
+      all: queue.length,
+      loans: queue.filter(function (c) { return c.type === 'loan'; }).length,
+      deposits: queue.filter(function (c) { return c.type === 'deposit'; }).length,
+      vip: queue.filter(function (c) { return c.isVip; }).length
+    };
+
+    var chips = [
+      { id: 'all', label: 'Все' },
+      { id: 'loans', label: 'Кредиты' },
+      { id: 'deposits', label: 'Вклады' },
+      { id: 'vip', label: 'VIP' }
+    ];
+
+    var html = chips.map(function (c) {
+      return '<button class="chip' + (state.clientFilter === c.id ? ' is-on' : '') + '" type="button" data-client-filter="' +
+        c.id + '">' + c.label + ' ' + counts[c.id] + '</button>';
+    }).join('');
+
+    if (box.innerHTML !== html) box.innerHTML = html;
+  }
+
   function renderQueue() {
     if (!els.queue) return;
 
     var list = state.queue;
+    if (state.clientFilter === 'loans') list = list.filter(function (c) { return c.type === 'loan'; });
+    else if (state.clientFilter === 'deposits') list = list.filter(function (c) { return c.type === 'deposit'; });
+    else if (state.clientFilter === 'vip') list = list.filter(function (c) { return c.isVip; });
     var signature = list.map(function (c) { return c.id; }).join('|');
     if (signature === last.queue) return;
     last.queue = signature;
@@ -245,11 +322,15 @@
     return 'на грани';
   }
 
-  function skillRow(name, value) {
+  function skillRow(name, base, bonus) {
+    var total = base + (bonus || 0);
+    var width = Math.max(2, Math.min(100, total / 1.2));
+
     return '<div class="skill">' +
       '<span class="skill-name">' + name + '</span>' +
-      '<span class="skill-bar"><i style="width:' + value + '%"></i></span>' +
-      '<span class="skill-val">' + value + '</span>' +
+      '<span class="skill-bar"><i style="width:' + width + '%"></i></span>' +
+      '<span class="skill-val">' + total +
+        (bonus ? '<small class="up"> +' + bonus + '</small>' : '') + '</span>' +
     '</div>';
   }
 
@@ -412,7 +493,8 @@
                      state.managers.length, Math.round(state.capital), m.mole ? 1 : 0,
                      m.promotedDay || 0, m.character || '', (m.buffs || []).length,
                      m.goal ? (m.goal.done ? 'd' : m.goal.failed ? 'f' : String(state.goalProgress(m))) : '',
-                     m.courses || 0, m.cleanMonths || 0, m.potential || '', m.potentialMax || 0].join('|');
+                     m.courses || 0, m.cleanMonths || 0, m.potential || '', m.potentialMax || 0,
+                     (m.workMode || 'all'), JSON.stringify(m.buffBonus || {})].join('|');
     if (signature === last.manager) return;
     last.manager = signature;
 
@@ -473,6 +555,14 @@
             (diff < 0 ? 'ниже' : 'выше') + ' рынка на ' + Math.abs(diff) + '%</span>' +
         '</div>' +
 
+        '<div class="workmode-box">' +
+          '<span class="small muted">Режим работы</span>' +
+          '<div class="segmented">' +
+            '<button type="button" data-workmode="all" class="' + (m.workMode === 'all' || !m.workMode ? 'is-on' : '') + '">Все</button>' +
+            '<button type="button" data-workmode="vip" class="' + (m.workMode === 'vip' ? 'is-on' : '') + '">Только VIP</button>' +
+            '<button type="button" data-workmode="regular" class="' + (m.workMode === 'regular' ? 'is-on' : '') + '">Только обычные</button>' +
+          '</div>' +
+        '</div>' +
         '<div class="autopilot-box">' +
           '<div class="ap-txt">' +
             '<b>Автопилот</b>' +
@@ -490,11 +580,11 @@
       '</section>' +
 
       '<section class="card">' +
-        '<div class="card-h"><h2>Навыки</h2><div class="r">1–100</div></div>' +
+        '<div class="card-h"><h2>Навыки</h2><div class="r">база + бафф</div></div>' +
         '<div class="card-b"><div class="skills">' +
-          skillRow('Аналитика', m.skills.analytics) +
-          skillRow('Скорость', m.skills.speed) +
-          skillRow('Осторожность', m.skills.caution) +
+          skillRow('Аналитика', m.skills.analytics, (m.buffBonus || {}).analytics) +
+          skillRow('Скорость', m.skills.speed, (m.buffBonus || {}).speed) +
+          skillRow('Осторожность', m.skills.caution, (m.buffBonus || {}).caution) +
         '</div></div>' +
       '</section>' +
 
@@ -1669,6 +1759,8 @@
     renderFlow();
     renderVip();
     renderQueue();
+    renderVipControl();
+    renderClientFilters();
     renderManager();
     renderAutopilot();
     renderPortfolio();
@@ -1973,6 +2065,52 @@
     });
   }
 
+  function bindVipAndFilters() {
+    document.addEventListener('input', function (event) {
+      var slider = event.target.closest && event.target.closest('[data-vip-slider]');
+      if (slider) {
+        var type = slider.dataset.vipSlider;
+        state.setVipThreshold(type, sliderToVip(Number(slider.value)));
+        last.vipControl = null;
+        render();
+        return;
+      }
+
+      var input = event.target.closest && event.target.closest('[data-vip-input]');
+      if (input && input.type === 'number') {
+        var t = input.dataset.vipInput;
+        state.setVipThreshold(t, Number(input.value));
+        last.vipControl = null;
+        render();
+      }
+    });
+
+    document.addEventListener('click', function (event) {
+      var chip = event.target.closest && event.target.closest('[data-client-filter]');
+      if (chip) {
+        state.setClientFilter(chip.dataset.clientFilter);
+        last.queue = null;
+        renderQueue();
+        renderClientFilters();
+        return;
+      }
+
+      var mode = event.target.closest && event.target.closest('[data-workmode]');
+      if (mode) {
+        var m = state.managerById(state.activeManagerId);
+        if (!m) return;
+        m.workMode = mode.dataset.workmode;
+        state.save();
+        last.manager = null;
+        if (typeof global.showToast === 'function') {
+          global.showToast(mode.dataset.workmode === 'vip' ? 'Только VIP-заявки'
+            : mode.dataset.workmode === 'regular' ? 'Только обычные заявки' : 'Все клиенты');
+        }
+        render();
+      }
+    });
+  }
+
   function bindStage() {
     document.addEventListener('click', function (event) {
       var btn = event.target.closest && event.target.closest('[data-stage-up]');
@@ -2076,6 +2214,7 @@
     bindSecurity();
     bindStage();
     bindBranchButton();
+    bindVipAndFilters();
     bindNegotiation();
     bindProfileReset();
     bindNotifications();

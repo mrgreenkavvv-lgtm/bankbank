@@ -2209,3 +2209,35 @@ body, button, a, input, select, textarea,
 
 /* [hidden] не должен проигрывать классам с display */
 [hidden] { display: none !important; }
+
+/* --------------------------------------------------------------------------
+   38. VIP-порог и режим работы
+   -------------------------------------------------------------------------- */
+.vip-row { margin-top: 10px; }
+.vip-row .between { gap: 10px; margin-bottom: 6px; }
+
+.vip-input {
+  width: 130px;
+  padding: 5px 8px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  text-align: right;
+}
+.vip-input:focus { outline: none; border-color: var(--gold); }
+
+.workmode-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.workmode-box .segmented { flex: 0 0 auto; }
+
+.skill-val small { font-size: 10px; margin-left: 3px; }

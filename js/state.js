@@ -148,7 +148,7 @@
       term: term || (6 + Math.floor(Math.random() * 31)),     // 6–36 мес
       rate: rate || round2(12 + Math.random() * 10),          // 12–22%
       risk: risk || (1 + Math.floor(Math.random() * 5)),      // 1–5
-      isVip: amount >= 3000000,
+      isVip: amount >= (type === 'deposit' ? GameState.vipThresholdDeposit : GameState.vipThresholdLoan),
       manager: MANAGERS[Math.floor(Math.random() * MANAGERS.length)]
     };
   }
@@ -342,6 +342,12 @@
       fxSpreadMult: 1,
       inspectionDays: 0
     },
+
+    /* ---------- VIP-пороги и фильтр очереди ---------- */
+    vipThreshold: 3000000,
+    vipThresholdLoan: 3000000,
+    vipThresholdDeposit: 3000000,
+    clientFilter: 'all',
 
     /* ---------- Казначейство ---------- */
     ratesLog: [],
@@ -736,6 +742,47 @@
       return unlocked;
     },
 
+    /* ---------- VIP-порог ---------- */
+    vipLimitFor: function (type) {
+      return type === 'deposit'
+        ? (this.vipThresholdDeposit || 3000000)
+        : (this.vipThresholdLoan || 3000000);
+    },
+
+    vipFor: function (type, amount) {
+      return amount >= this.vipLimitFor(type);
+    },
+
+    setVipThreshold: function (type, value) {
+      value = Math.max(100000, Math.min(100000000, Math.round(Number(value) || 0)));
+      if (type === 'deposit') this.vipThresholdDeposit = value;
+      else this.vipThresholdLoan = value;
+
+      this.vipThreshold = this.vipThresholdLoan;
+      this.recomputeVip();
+      this.save();
+      return value;
+    },
+
+    recomputeVip: function () {
+      var self = this;
+      this.queue.forEach(function (c) { c.isVip = self.vipFor(c.type, c.amount); });
+      this.activeClients.forEach(function (c) { c.isVip = self.vipFor(c.type, c.amount); });
+    },
+
+    setClientFilter: function (value) {
+      if (['all', 'loans', 'deposits', 'vip'].indexOf(value) === -1) return;
+      this.clientFilter = value;
+      this.save();
+    },
+
+    /* ---------- Навыки: база + бафф ---------- */
+    skillValue: function (manager, key) {
+      var base = (manager.skills && manager.skills[key]) || 0;
+      var bonus = (manager.buffBonus && manager.buffBonus[key]) || 0;
+      return base + bonus;
+    },
+
     /* ---------- Уведомления ---------- */
     normalizeLog: function () {
       var self = this;
@@ -995,9 +1042,11 @@
 
     applyBuff: function (manager, buff) {
       var a = buff.apply || {};
-      if (a.analytics) manager.skills.analytics = Math.min(100, manager.skills.analytics + a.analytics);
-      if (a.speed) manager.skills.speed = Math.min(100, manager.skills.speed + a.speed);
-      if (a.caution) manager.skills.caution = Math.min(100, manager.skills.caution + a.caution);
+      if (!manager.buffBonus) manager.buffBonus = { analytics: 0, speed: 0, caution: 0 };
+
+      if (a.analytics) manager.buffBonus.analytics += a.analytics;
+      if (a.speed) manager.buffBonus.speed += a.speed;
+      if (a.caution) manager.buffBonus.caution += a.caution;
       if (a.loyalty) manager.loyalty = Math.min(100, manager.loyalty + a.loyalty);
     },
 
@@ -1562,6 +1611,8 @@
         autopilot: false,
         progress: 0,
         character: cand.character || 'calm',
+        buffBonus: { analytics: 0, speed: 0, caution: 0 },
+        workMode: 'all',
         potential: cand.potential || 'medium',
         potentialMax: cand.potentialMax || 75,
         buffs: [],
@@ -2043,21 +2094,27 @@
 
     /* сколько игровых дней уходит на одного клиента */
     managerDaysPerClient: function (manager) {
-      var speed = manager.skills.speed;
+      var speed = this.skillValue(manager, 'speed');
       var days = 3 - speed / 50;          // скорость 100 → 1 день, 1 → ~3 дня
       return Math.max(1, Math.min(3, days));
     },
 
     /* шанс, что менеджер ошибочно одобрит рискового клиента */
     managerMistakeChance: function (manager) {
-      var sum = manager.skills.analytics + manager.skills.caution;
+      var sum = this.skillValue(manager, 'analytics') + this.skillValue(manager, 'caution');
       return Math.max(0.05, Math.min(0.6, (200 - sum) / 200));
     },
 
     /* кого менеджер берёт в работу: первый не-VIP из очереди */
-    autopilotTarget: function () {
+    autopilotTarget: function (manager) {
+      var mode = (manager && manager.workMode) || 'all';
+
       for (var i = 0; i < this.queue.length; i += 1) {
-        if (!this.queue[i].isVip) return this.queue[i];
+        var client = this.queue[i];
+        if (mode === 'vip' && !client.isVip) continue;
+        if (mode === 'regular' && client.isVip) continue;
+        if (mode === 'all' && client.isVip) continue;
+        return client;
       }
       return null;
     },
@@ -2070,7 +2127,7 @@
       this.managers.forEach(function (manager) {
         if (!manager.autopilot) { manager.progress = 0; return; }
 
-        var target = self.autopilotTarget();
+        var target = self.autopilotTarget(manager);
         if (!target) { manager.progress = 0; return; }
 
         manager.progress += 1 / self.managerDaysPerClient(manager);
@@ -2164,12 +2221,13 @@
       }
 
       /* VIP-банк: часть обычных клиентов приходит крупными */
-      if (bonus.vipChanceBonus > 0 && client.amount < 3000000 && Math.random() < bonus.vipChanceBonus) {
-        client.amount = Math.round((3000000 + Math.random() * 2500000) / 1000) * 1000;
-        client.isVip = true;
-      } else {
-        client.isVip = client.amount >= 3000000;
+      var limit = this.vipLimitFor(client.type);
+
+      if (bonus.vipChanceBonus > 0 && client.amount < limit && Math.random() < bonus.vipChanceBonus) {
+        client.amount = Math.round((limit + Math.random() * 2500000) / 1000) * 1000;
       }
+
+      client.isVip = client.amount >= limit;
 
       this.activeClients.unshift(client);
       if (this.activeClients.length > this.maxClients) {
@@ -2300,6 +2358,10 @@
           negotiation: this.negotiation,
           defaultsThisMonth: this.defaultsThisMonth,
           prevCapital: this.prevCapital,
+          vipThreshold: this.vipThreshold,
+          vipThresholdLoan: this.vipThresholdLoan,
+          vipThresholdDeposit: this.vipThresholdDeposit,
+          clientFilter: this.clientFilter,
           log: this.log.slice(-200),
           ratesLog: this.ratesLog,
           fxSpread: this.fxSpread,
@@ -2363,6 +2425,8 @@
               m.potential = m.potential || 'medium';
               m.potentialMax = 75;
             }
+            if (!m.buffBonus) m.buffBonus = { analytics: 0, speed: 0, caution: 0 };
+            if (!m.workMode) m.workMode = 'all';
           });
         }
         if (Number(data.branches)) this.branches = Number(data.branches);
@@ -2392,6 +2456,13 @@
         if (data.negotiation) this.negotiation = data.negotiation;
         if (typeof data.defaultsThisMonth === 'number') this.defaultsThisMonth = data.defaultsThisMonth;
         if (typeof data.prevCapital === 'number') this.prevCapital = data.prevCapital;
+        if (Number(data.vipThreshold)) this.vipThreshold = Number(data.vipThreshold);
+        if (Number(data.vipThresholdLoan)) this.vipThresholdLoan = Number(data.vipThresholdLoan);
+        else if (Number(data.vipThreshold)) this.vipThresholdLoan = Number(data.vipThreshold);
+        if (Number(data.vipThresholdDeposit)) this.vipThresholdDeposit = Number(data.vipThresholdDeposit);
+        else if (Number(data.vipThreshold)) this.vipThresholdDeposit = Number(data.vipThreshold);
+        if (typeof data.clientFilter === 'string') this.clientFilter = data.clientFilter;
+
         if (Array.isArray(data.log)) this.log = data.log;
         if (Array.isArray(data.ratesLog)) this.ratesLog = data.ratesLog;
         if (typeof data.fxSpread === 'number') this.fxSpread = data.fxSpread;
