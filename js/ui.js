@@ -620,21 +620,295 @@
       ? rival.map(function (c) { return c.name + ': вкл ' + c.depositRate + '% · кр ' + c.loanRate + '%'; }).join(' · ')
       : 'конкурентов не осталось';
 
-    box.innerHTML = '<div class="card-h"><h2>Процентная политика</h2><div class="r">' + rivalText + '</div></div>' +
-      '<div class="card-b rates">' +
-        '<div class="rate-block">' +
-          '<div class="between"><span>Кредиты</span>' +
-            '<b class="num" data-rate-value="loan">' + rateLabel(state.playerLoanRate) + '</b></div>' +
-          '<input type="range" min="5" max="35" step="0.5" value="' + state.playerLoanRate + '" data-rate="loan" aria-label="Ставка по кредитам">' +
-          '<div class="small muted">' + ratesHint('loan') + '</div>' +
-        '</div>' +
-        '<div class="rate-block">' +
-          '<div class="between"><span>Вклады</span>' +
-            '<b class="num" data-rate-value="deposit">' + rateLabel(state.playerDepositRate) + '</b></div>' +
-          '<input type="range" min="1" max="25" step="0.5" value="' + state.playerDepositRate + '" data-rate="deposit" aria-label="Ставка по вкладам">' +
-          '<div class="small muted">' + ratesHint('deposit') + '</div>' +
-        '</div>' +
+    box.innerHTML = '<div class="card-h"><h2>Процентная политика</h2>' +
+        '<div class="r"><a class="link-more" href="treasury.html">Казначейство →</a></div></div>' +
+      '<div class="card-b rates-mini">' +
+        '<div class="rm-cell"><span>Кредиты</span><b class="num">' + rateLabel(state.playerLoanRate) + '</b></div>' +
+        '<div class="rm-cell"><span>Вклады</span><b class="num">' + rateLabel(state.playerDepositRate) + '</b></div>' +
+        '<div class="rm-note small muted">' + rivalText + '</div>' +
       '</div>';
+  }
+
+  /* ---------- Казначейство ---------- */
+  var treasuryTab = 'rates';
+
+  function ratesHistoryHtml() {
+    var log = state.ratesLog.slice(-10);
+    if (!log.length) return '<div class="muted small">История появится, когда пройдёт первый игровой день.</div>';
+
+    return log.map(function (item) {
+      return '<div class="hist-row">' +
+        '<span class="muted">д. ' + item.day + '</span>' +
+        '<span class="num">' + rateLabel(item.loan) + '</span>' +
+        '<span class="num">' + rateLabel(item.dep) + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  function fxCardHtml(code, title) {
+    var c = state.currencies[code];
+    var delta = ((c.rate - c.prev) / c.prev) * 100;
+    var buy = state.fxPrice(code, 'buy');
+    var sell = state.fxPrice(code, 'sell');
+    var avg = c.amount > 0 ? c.cost / c.amount : 0;
+    var pnl = c.amount * c.rate - c.cost;
+
+    return '<div class="fx-card">' +
+      '<div class="fx-top">' +
+        '<b>' + title + '</b>' +
+        '<span class="num fx-rate">' + c.rate.toFixed(2).replace('.', ',') + ' ₽</span>' +
+        '<span class="tiny num ' + (delta >= 0 ? 'up' : 'down') + '">' +
+          (delta >= 0 ? '▲ +' : '▼ ') + Math.abs(delta).toFixed(2).replace('.', ',') + '%</span>' +
+      '</div>' +
+      '<div class="fx-meta small muted">' +
+        'у вас ' + c.amount.toFixed(2) + ' · средняя ' + avg.toFixed(2).replace('.', ',') + ' ₽' +
+        (pnl < -0.5 ? ' · <span class="down">убыток ' + money(Math.abs(pnl)) + '</span>'
+                    : pnl > 0.5 ? ' · <span class="up">+' + money(pnl) + '</span>' : '') +
+      '</div>' +
+      '<div class="fx-buy">' + buy.toFixed(2).replace('.', ',') + ' ₽</div>' +
+      '<div class="fx-sell">' + sell.toFixed(2).replace('.', ',') + ' ₽</div>' +
+      '<div class="fx-form">' +
+        '<input type="number" min="0" step="1000" placeholder="₽" data-fx-buy-sum="' + code + '" aria-label="Сумма в рублях">' +
+        '<button class="btn btn-sm" type="button" data-fx-buy="' + code + '">Купить</button>' +
+        '<input type="number" min="0" step="100" placeholder="' + title + '" data-fx-sell-sum="' + code + '" aria-label="Сумма в валюте">' +
+        '<button class="btn btn-sm" type="button" data-fx-sell="' + code + '">Продать</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function treasuryRates() {
+    return '<div class="dash-col">' +
+        '<section class="card">' +
+          '<div class="card-h"><h2>Процентная политика</h2><div class="r">сравнение с рынком</div></div>' +
+          '<div class="card-b rates">' +
+            '<div class="rate-block">' +
+              '<div class="between"><span>Кредиты</span><b class="num" data-rate-value="loan">' + rateLabel(state.playerLoanRate) + '</b></div>' +
+              '<input type="range" min="5" max="35" step="0.5" value="' + state.playerLoanRate + '" data-rate="loan" aria-label="Ставка по кредитам">' +
+              '<div class="small muted">' + ratesHint('loan') + '</div>' +
+            '</div>' +
+            '<div class="rate-block">' +
+              '<div class="between"><span>Вклады</span><b class="num" data-rate-value="deposit">' + rateLabel(state.playerDepositRate) + '</b></div>' +
+              '<input type="range" min="1" max="25" step="0.5" value="' + state.playerDepositRate + '" data-rate="deposit" aria-label="Ставка по вкладам">' +
+              '<div class="small muted">' + ratesHint('deposit') + '</div>' +
+            '</div>' +
+          '</div>' +
+        '</section>' +
+      '</div>' +
+      '<div class="dash-col">' +
+        '<section class="card">' +
+          '<div class="card-h"><h2>История ставок</h2><div class="r">10 дней</div></div>' +
+          '<div class="card-b">' +
+            '<div class="hist-head small muted"><span>день</span><span>кредиты</span><span>вклады</span></div>' +
+            ratesHistoryHtml() +
+          '</div>' +
+        '</section>' +
+      '</div>';
+  }
+
+  function treasuryLiquidity() {
+    var res = state.reserved;
+    var liquid = state.liquidFunds();
+    var ratios = state.computeRatios();
+
+    return '<div class="dash-col">' +
+        '<section class="card">' +
+          '<div class="card-h"><h2>Ликвидность</h2><div class="r">резервы</div></div>' +
+          '<div class="card-b">' +
+            '<div class="liq-row"><span class="muted">Капитал всего</span><b class="num">' + money(state.capital) + '</b></div>' +
+            '<div class="liq-row"><span class="muted">Свободные средства</span><b class="num up">' + money(liquid) + '</b></div>' +
+            '<div class="liq-row"><span class="muted">В резерве</span><b class="num">' + money(res) + '</b></div>' +
+            '<div class="hr"></div>' +
+            '<div class="liq-row"><span class="muted">Н1 сейчас</span><b class="num">' + rateLabel(Math.min(ratios.h1, 999)) + '</b></div>' +
+            '<div class="small muted" style="margin-top:6px">Резерв учитывается в числителе Н1, но замораживается: эти деньги нельзя выдать в кредит.</div>' +
+            '<div class="hr"></div>' +
+            '<input type="number" min="0" step="100000" placeholder="Сумма, ₽" data-reserve-sum aria-label="Сумма резерва">' +
+            '<div class="row" style="gap:8px;margin-top:8px">' +
+              '<button class="btn btn-primary" type="button" data-reserve-add>Отправить в резерв</button>' +
+              '<button class="btn" type="button" data-reserve-remove>Вывести из резерва</button>' +
+            '</div>' +
+          '</div>' +
+        '</section>' +
+      '</div>' +
+      '<div class="dash-col">' +
+        '<section class="card">' +
+          '<div class="card-h"><h2>Зачем это</h2><div class="r">регулятор</div></div>' +
+          '<div class="card-b small muted" style="line-height:1.5">' +
+            'Н1 — достаточность капитала: капитал к выданным кредитам. На проверке ЦБ минимум 8%.<br><br>' +
+            'Резерв повышает Н1, но уменьшает сумму, доступную для выдачи кредитов и МБК. ' +
+            'Держите его, когда ждёте проверку или готовитесь к оттоку вкладов.' +
+          '</div>' +
+        '</section>' +
+      '</div>';
+  }
+
+  function treasuryFx() {
+    var fx = state.fxPosition();
+
+    return '<div class="dash-col">' +
+        '<section class="card">' +
+          '<div class="card-h"><h2>Курсы</h2><div class="r">обновляются каждый игровой день</div></div>' +
+          '<div class="card-b">' +
+            fxCardHtml('usd', 'USD') +
+            fxCardHtml('eur', 'EUR') +
+            fxCardHtml('cny', 'CNY') +
+          '</div>' +
+        '</section>' +
+      '</div>' +
+      '<div class="dash-col">' +
+        '<section class="card">' +
+          '<div class="card-h"><h2>Спред</h2><div class="r">' + state.fxSpread.toFixed(1).replace('.', ',') + '%</div></div>' +
+          '<div class="card-b">' +
+            '<input type="range" min="0" max="5" step="0.1" value="' + state.fxSpread + '" data-fx-spread aria-label="Спред">' +
+            '<div class="small muted" style="margin-top:8px">Покупка — по курсу плюс спред, продажа — минус. Чем шире спред, тем больше зарабатываете на обмене, но меньше клиентов меняют.</div>' +
+            '<div class="hr"></div>' +
+            '<div class="liq-row"><span class="muted">Портфель валют</span><b class="num">' + money(fx.value) + '</b></div>' +
+            '<div class="liq-row"><span class="muted">Вложено рублей</span><b class="num">' + money(fx.cost) + '</b></div>' +
+            '<div class="liq-row"><span class="muted">' + (fx.pnl >= 0 ? 'Курсовая прибыль' : 'Курсовой убыток') + '</span>' +
+              '<b class="num ' + (fx.pnl >= 0 ? 'up' : 'down') + '">' + (fx.pnl >= 0 ? '+' : '−') + money(Math.abs(fx.pnl)) + '</b></div>' +
+            (fx.pnl < -0.5
+              ? '<div class="warn-line" style="margin-top:10px">Курсовой убыток: ' + money(Math.abs(fx.pnl)) + ' ₽</div>'
+              : '') +
+          '</div>' +
+        '</section>' +
+      '</div>';
+  }
+
+  function treasuryInvest() {
+    var inv = state.investments;
+    var cbClass = inv.cbLoan > 0 ? 'down' : 'up';
+
+    var bonds = inv.bonds.length
+      ? inv.bonds.map(function (b) {
+          return '<div class="liq-row"><span class="muted">' +
+            (b.type === 'ofz' ? 'ОФЗ' : 'Корп.') + ' · ' + b.rate + '% · ' + b.monthsLeft + ' мес</span>' +
+            '<b class="num">' + money(b.amount) + '</b></div>';
+        }).join('')
+      : '<div class="muted small">Портфель пуст</div>';
+
+    return '<div class="dash-col">' +
+        '<section class="card">' +
+          '<div class="card-h"><h2>Кредит ЦБ</h2><div class="r">25% годовых</div></div>' +
+          '<div class="card-b">' +
+            '<div class="liq-row"><span class="muted">Долг перед ЦБ</span>' +
+              '<b class="num ' + cbClass + '">' + money(inv.cbLoan) + '</b></div>' +
+            '<input type="number" min="0" step="1000000" placeholder="Сумма, ₽" data-cb-sum aria-label="Сумма кредита ЦБ">' +
+            '<div class="row" style="gap:8px;margin-top:8px">' +
+              '<button class="btn btn-primary" type="button" data-cb-take>Взять кредит ЦБ</button>' +
+              '<button class="btn" type="button" data-cb-repay>Погасить</button>' +
+            '</div>' +
+            '<div class="small muted" style="margin-top:8px">Проценты списываются каждый месяц. Спасает от банкротства, но долг давит на капитал.</div>' +
+          '</div>' +
+        '</section>' +
+        '<section class="card">' +
+          '<div class="card-h"><h2>Межбанковский кредит</h2><div class="r">6 месяцев</div></div>' +
+          '<div class="card-b">' +
+            '<div class="liq-row"><span class="muted">Взято (15%)</span><b class="num down">' + money(inv.mbkTaken.amount) + '</b></div>' +
+            '<div class="liq-row"><span class="muted">Выдано (12%)</span><b class="num up">' + money(inv.mbkGiven.amount) + '</b></div>' +
+            '<input type="number" min="0" step="1000000" placeholder="Сумма, ₽" data-mbk-sum aria-label="Сумма МБК">' +
+            '<div class="row" style="gap:8px;margin-top:8px">' +
+              '<button class="btn" type="button" data-mbk-take>Взять МБК</button>' +
+              '<button class="btn" type="button" data-mbk-give>Дать МБК</button>' +
+            '</div>' +
+          '</div>' +
+        '</section>' +
+      '</div>' +
+      '<div class="dash-col">' +
+        '<section class="card">' +
+          '<div class="card-h"><h2>Облигации</h2><div class="r">' + money(state.bondsValue()) + '</div></div>' +
+          '<div class="card-b">' +
+            '<input type="number" min="0" step="100000" placeholder="Сумма, ₽" data-bond-sum aria-label="Сумма облигаций">' +
+            '<div class="row" style="gap:8px;margin-top:8px">' +
+              '<button class="btn btn-primary" type="button" data-bond="ofz">Купить ОФЗ · 8%</button>' +
+              '<button class="btn" type="button" data-bond="corp">Корпоративные · 15%</button>' +
+            '</div>' +
+            '<div class="hr"></div>' +
+            bonds +
+            '<div class="small muted" style="margin-top:8px">Купоны капают каждый месяц. У корпоративных есть риск дефолта эмитента.</div>' +
+          '</div>' +
+        '</section>' +
+      '</div>';
+  }
+
+  function renderTreasury() {
+    var panel = document.querySelector('[data-ui="treasury-panel"]');
+    if (!panel) return;
+
+    var body = treasuryTab === 'rates' ? treasuryRates()
+      : treasuryTab === 'liquidity' ? treasuryLiquidity()
+      : treasuryTab === 'fx' ? treasuryFx()
+      : treasuryInvest();
+
+    panel.innerHTML = '<div class="dash">' + body + '</div>';
+
+    var tabs = document.querySelectorAll('[data-ttab]');
+    Array.prototype.forEach.call(tabs, function (btn) {
+      var on = btn.dataset.ttab === treasuryTab;
+      btn.classList.toggle('is-on', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function bindTreasury() {
+    var panel = document.querySelector('[data-ui="treasury-panel"]');
+    if (!panel) return;
+
+    document.addEventListener('click', function (event) {
+      var tab = event.target.closest && event.target.closest('[data-ttab]');
+      if (tab) {
+        treasuryTab = tab.dataset.ttab;
+        renderTreasury();
+        return;
+      }
+
+      var el = event.target.closest && event.target.closest('[data-reserve-add],[data-reserve-remove],[data-fx-buy],[data-fx-sell],[data-cb-take],[data-cb-repay],[data-mbk-take],[data-mbk-give],[data-bond]');
+      if (!el) return;
+
+      var res;
+      var toast = function (text) { if (typeof global.showToast === 'function') global.showToast(text); };
+      var num = function (sel) {
+        var input = document.querySelector(sel);
+        return input ? Number(input.value) || 0 : 0;
+      };
+
+      if (el.hasAttribute('data-reserve-add')) {
+        res = state.reserveAdd(num('[data-reserve-sum]'));
+        toast(res.ok ? 'В резерв: ' + money(res.paid) : res.error === 'money' ? 'Свободно только ' + money(res.available) : 'Не вышло');
+      } else if (el.hasAttribute('data-reserve-remove')) {
+        res = state.reserveRemove(num('[data-reserve-sum]'));
+        toast(res.ok ? 'Из резерва: ' + money(num('[data-reserve-sum]')) : 'В резерве меньше');
+      } else if (el.hasAttribute('data-fx-buy')) {
+        res = state.fxBuy(el.dataset.fxBuy, num('[data-fx-buy-sum="' + el.dataset.fxBuy + '"]'));
+        toast(res.ok ? 'Куплено ' + res.amount.toFixed(2) + ' по ' + res.price.toFixed(2) + ' ₽' : 'Не хватает рублей');
+      } else if (el.hasAttribute('data-fx-sell')) {
+        res = state.fxSell(el.dataset.fxSell, num('[data-fx-sell-sum="' + el.dataset.fxSell + '"]'));
+        toast(res.ok ? 'Продано за ' + money(res.rub) : 'Столько валюты нет');
+      } else if (el.hasAttribute('data-cb-take')) {
+        res = state.takeCBLoan(num('[data-cb-sum]'));
+        toast(res.ok ? 'Кредит ЦБ получен' : 'Укажите сумму');
+      } else if (el.hasAttribute('data-cb-repay')) {
+        res = state.repayCBLoan(num('[data-cb-sum]'));
+        toast(res.ok ? 'Долг перед ЦБ: ' + money(res.debt) : 'Не хватает средств');
+      } else if (el.hasAttribute('data-mbk-take')) {
+        res = state.takeMBK(num('[data-mbk-sum]'));
+        toast(res.ok ? 'МБК получен' : 'Укажите сумму');
+      } else if (el.hasAttribute('data-mbk-give')) {
+        res = state.giveMBK(num('[data-mbk-sum]'));
+        toast(res.ok ? 'МБК выдан' : 'Не хватает свободных средств');
+      } else if (el.hasAttribute('data-bond')) {
+        res = state.buyBond(el.dataset.bond, num('[data-bond-sum]'));
+        toast(res.ok ? 'Облигации куплены' : 'Не хватает свободных средств');
+      }
+
+      render();
+    });
+
+    document.addEventListener('input', function (event) {
+      var spread = event.target.closest && event.target.closest('[data-fx-spread]');
+      if (!spread) return;
+      state.fxSpread = Number(spread.value);
+      state.save();
+      renderTreasury();
+    });
   }
 
   /* ---------- Биржа ---------- */
@@ -1025,6 +1299,7 @@
     renderInspection();
     renderBranches();
     renderRates();
+    renderTreasury();
     renderStocks();
     renderSecurity();
     renderAchievements();
@@ -1355,6 +1630,7 @@
     bindTabs();
     bindInspection();
     bindRates();
+    bindTreasury();
     bindStocks();
     bindSecurity();
     bindStage();

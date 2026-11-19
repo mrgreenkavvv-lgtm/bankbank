@@ -1919,3 +1919,80 @@ body.is-bankrupt .hud-m { box-shadow: inset 0 2px 0 var(--coral); }
 html[data-stage="1"] { --gold: #C8A04A; --stage: #C8A04A; }
 html[data-stage="2"] { --gold: #AEBCC9; --stage: #AEBCC9; }
 html[data-stage="3"] { --gold: #46C8B6; --stage: #46C8B6; }
+/* --------------------------------------------------------------------------
+   31. Казначейство
+   -------------------------------------------------------------------------- */
+.link-more { color: var(--gold); font-size: var(--fs-11); text-decoration: none; }
+.link-more:hover { text-decoration: underline; }
+
+.rates-mini { display: flex; align-items: center; gap: var(--sp-5); flex-wrap: wrap; }
+.rm-cell { display: flex; flex-direction: column; gap: 2px; }
+.rm-cell span { font-size: var(--fs-10); text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+.rm-cell b { font-size: var(--fs-17); color: var(--gold); }
+.rm-note { flex: 1; min-width: 200px; text-align: right; }
+
+.hist-head, .hist-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 90px;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: 7px 0;
+  font-size: var(--fs-11);
+  border-top: 1px solid var(--border);
+}
+.hist-head { border-top: 0; text-transform: uppercase; letter-spacing: .06em; font-size: 9.5px; }
+.hist-row span:nth-child(2), .hist-row span:nth-child(3) { text-align: right; }
+.hist-head span:nth-child(2), .hist-head span:nth-child(3) { text-align: right; }
+
+.liq-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); padding: 7px 0; font-size: var(--fs-12); }
+.liq-row b { font-family: var(--font-mono); }
+
+.fx-card { padding: 12px 0; border-top: 1px solid var(--border); }
+.fx-card:first-of-type { border-top: 0; }
+.fx-top { display: flex; align-items: baseline; gap: var(--sp-2); }
+.fx-top b { font-size: var(--fs-14); min-width: 42px; }
+.fx-rate { margin-left: auto; font-size: var(--fs-14); }
+.fx-meta { margin-top: 4px; }
+
+.fx-buy, .fx-sell { display: none; }
+
+.fx-form { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 6px; margin-top: 9px; }
+.fx-form input {
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+}
+.fx-form input:focus { outline: none; border-color: var(--gold); }
+
+input[data-reserve-sum], input[data-cb-sum], input[data-mbk-sum], input[data-bond-sum] {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+input[data-reserve-sum]:focus, input[data-cb-sum]:focus, input[data-mbk-sum]:focus, input[data-bond-sum]:focus {
+  outline: none; border-color: var(--gold);
+}
+
+.warn-line {
+  padding: 8px 10px;
+  border-radius: var(--r-s);
+  background: var(--coral-dim);
+  color: var(--coral);
+  font-size: var(--fs-11);
+}
+
+@media (max-width: 860px) {
+  .fx-form { grid-template-columns: 1fr auto; }
+  .rm-note { text-align: left; }
+}

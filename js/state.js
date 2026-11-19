@@ -114,7 +114,7 @@
       return {
         loansTotal: loansTotal,
         depositsTotal: depositsTotal,
-        h1: loansTotal > 0 ? (this.capital / loansTotal) * 100 : 999,
+        h1: loansTotal > 0 ? ((this.capital + this.reserved) / loansTotal) * 100 : 999,
         h2: depositsTotal > 0 ? (this.liquidFunds() / depositsTotal) * 100 : 999,
         h3: depositsTotal > 0 ? (this.capital / depositsTotal) * 100 : 999
       };
@@ -234,6 +234,21 @@
     salary: 200000,
     salaryEveryDays: 30,
 
+    /* ---------- Казначейство ---------- */
+    ratesLog: [],
+    fxSpread: 1.5,
+    currencies: {
+      usd: { rate: 90, prev: 90, amount: 0, cost: 0 },
+      eur: { rate: 100, prev: 100, amount: 0, cost: 0 },
+      cny: { rate: 12.5, prev: 12.5, amount: 0, cost: 0 }
+    },
+    investments: {
+      cbLoan: 0,
+      mbkTaken: { amount: 0, monthsLeft: 0 },
+      mbkGiven: { amount: 0, monthsLeft: 0 },
+      bonds: []
+    },
+
     /* ---------- Уровни банка ---------- */
     bankStage: 1,
     stageNames: ['Ларёк', 'Городской банк', 'Региональный', 'Федеральный', 'Национальный', 'Международный', 'Мировой'],
@@ -281,6 +296,240 @@
     branchCost: 5000000,
     clientsPerDay: 0.25,
     clientAcc: 0,
+
+    /* ---------- Казначейство: ставки ---------- */
+    pushRatesHistory: function () {
+      var last = this.ratesLog[this.ratesLog.length - 1];
+      if (last && last.day === this.dayNumber) {
+        last.loan = this.playerLoanRate;
+        last.dep = this.playerDepositRate;
+        return;
+      }
+      this.ratesLog.push({ day: this.dayNumber, loan: this.playerLoanRate, dep: this.playerDepositRate });
+      if (this.ratesLog.length > 10) this.ratesLog.shift();
+    },
+
+    /* ---------- Казначейство: резервы ---------- */
+    reserveAdd: function (amount) {
+      amount = Math.round(amount);
+      if (!(amount > 0)) return { ok: false, error: 'amount' };
+      if (this.liquidFunds() < amount) {
+        return { ok: false, error: 'money', need: amount, available: this.liquidFunds() };
+      }
+
+      this.reserved += amount;
+      this.log.push({
+        day: this.dayNumber,
+        type: 'treasury',
+        text: 'В резерв отправлено ' + formatMoney(amount) + ' · всего резерв ' + formatMoney(this.reserved)
+      });
+      this.save();
+      return { ok: true, reserved: this.reserved, paid: amount };
+    },
+
+    reserveRemove: function (amount) {
+      amount = Math.round(amount);
+      if (!(amount > 0)) return { ok: false, error: 'amount' };
+      if (this.reserved < amount) return { ok: false, error: 'reserve', need: this.reserved };
+
+      this.reserved -= amount;
+      this.log.push({
+        day: this.dayNumber,
+        type: 'treasury',
+        text: 'Из резерва выведено ' + formatMoney(amount) + ' · резерв ' + formatMoney(this.reserved)
+      });
+      this.save();
+      return { ok: true, reserved: this.reserved };
+    },
+
+    /* ---------- Казначейство: валюты ---------- */
+    driftCurrencies: function () {
+      var self = this;
+      ['usd', 'eur', 'cny'].forEach(function (code) {
+        var c = self.currencies[code];
+        c.prev = c.rate;
+        var drift = (Math.random() - 0.5) * 0.01;          // ±0,5% в день
+        c.rate = Math.max(1, Math.round(c.rate * (1 + drift) * 10000) / 10000);
+      });
+    },
+
+    fxPrice: function (code, side) {
+      var rate = this.currencies[code].rate;
+      var spread = this.fxSpread / 100;
+      return side === 'buy' ? rate * (1 + spread) : rate * (1 - spread);
+    },
+
+    fxBuy: function (code, rub) {
+      var c = this.currencies[code];
+      if (!c) return { ok: false, error: 'code' };
+      rub = Math.round(rub);
+      if (!(rub > 0)) return { ok: false, error: 'amount' };
+      if (this.liquidFunds() < rub) {
+        return { ok: false, error: 'money', need: rub, available: this.liquidFunds() };
+      }
+
+      var price = this.fxPrice(code, 'buy');
+      var amount = rub / price;
+
+      this.capital -= rub;
+      c.amount += amount;
+      c.cost += rub;
+
+      this.log.push({
+        day: this.dayNumber,
+        type: 'treasury',
+        text: 'Куплено ' + amount.toFixed(2) + ' ' + code.toUpperCase() + ' по ' + price.toFixed(2) + ' ₽'
+      });
+      this.save();
+      return { ok: true, amount: amount, price: price };
+    },
+
+    fxSell: function (code, amount) {
+      var c = this.currencies[code];
+      if (!c) return { ok: false, error: 'code' };
+      amount = Math.round(amount * 100) / 100;
+      if (!(amount > 0)) return { ok: false, error: 'amount' };
+      if (c.amount < amount) return { ok: false, error: 'stock', need: c.amount };
+
+      var price = this.fxPrice(code, 'sell');
+      var rub = amount * price;
+      var avg = c.amount > 0 ? c.cost / c.amount : 0;
+
+      c.amount -= amount;
+      c.cost = Math.max(0, c.cost - avg * amount);
+      this.capital += rub;
+
+      this.log.push({
+        day: this.dayNumber,
+        type: 'treasury',
+        text: 'Продано ' + amount.toFixed(2) + ' ' + code.toUpperCase() + ' по ' + price.toFixed(2) + ' ₽ · ' + formatMoney(rub)
+      });
+      this.save();
+      return { ok: true, rub: rub, price: price };
+    },
+
+    fxPosition: function () {
+      var self = this;
+      var value = 0;
+      var cost = 0;
+
+      ['usd', 'eur', 'cny'].forEach(function (code) {
+        var c = self.currencies[code];
+        value += c.amount * c.rate;
+        cost += c.cost;
+      });
+
+      return { value: value, cost: cost, pnl: value - cost };
+    },
+
+    /* ---------- Казначейство: инвестиции ---------- */
+    takeCBLoan: function (amount) {
+      amount = Math.round(amount);
+      if (!(amount > 0)) return { ok: false, error: 'amount' };
+
+      this.capital += amount;
+      this.investments.cbLoan += amount;
+
+      this.log.push({
+        day: this.dayNumber,
+        type: 'treasury',
+        text: 'Взят кредит ЦБ ' + formatMoney(amount) + ' под 25% · долг ' + formatMoney(this.investments.cbLoan)
+      });
+      this.checkCapital();
+      this.save();
+      return { ok: true, debt: this.investments.cbLoan };
+    },
+
+    repayCBLoan: function (amount) {
+      amount = Math.round(amount);
+      var debt = this.investments.cbLoan;
+      if (!(amount > 0)) return { ok: false, error: 'amount' };
+      if (this.liquidFunds() < amount) return { ok: false, error: 'money', need: amount };
+      if (debt <= 0) return { ok: false, error: 'debt' };
+
+      amount = Math.min(amount, debt);
+      this.capital -= amount;
+      this.investments.cbLoan -= amount;
+
+      this.log.push({
+        day: this.dayNumber,
+        type: 'treasury',
+        text: 'Погашено ЦБ ' + formatMoney(amount) + ' · остаток долга ' + formatMoney(this.investments.cbLoan)
+      });
+      this.checkCapital();
+      this.save();
+      return { ok: true, debt: this.investments.cbLoan };
+    },
+
+    takeMBK: function (amount) {
+      amount = Math.round(amount);
+      if (!(amount > 0)) return { ok: false, error: 'amount' };
+
+      var mbk = this.investments.mbkTaken;
+      mbk.amount += amount;
+      mbk.monthsLeft = 6;
+      this.capital += amount;
+
+      this.log.push({
+        day: this.dayNumber,
+        type: 'treasury',
+        text: 'Взят МБК ' + formatMoney(amount) + ' под 15% на 6 месяцев'
+      });
+      this.checkCapital();
+      this.save();
+      return { ok: true, amount: mbk.amount };
+    },
+
+    giveMBK: function (amount) {
+      amount = Math.round(amount);
+      if (!(amount > 0)) return { ok: false, error: 'amount' };
+      if (this.liquidFunds() < amount) {
+        return { ok: false, error: 'money', need: amount, available: this.liquidFunds() };
+      }
+
+      var mbk = this.investments.mbkGiven;
+      mbk.amount += amount;
+      mbk.monthsLeft = 6;
+      this.capital -= amount;
+
+      this.log.push({
+        day: this.dayNumber,
+        type: 'treasury',
+        text: 'Выдан МБК ' + formatMoney(amount) + ' под 12% на 6 месяцев'
+      });
+      this.save();
+      return { ok: true, amount: mbk.amount };
+    },
+
+    buyBond: function (type, amount) {
+      amount = Math.round(amount);
+      if (!(amount > 0)) return { ok: false, error: 'amount' };
+      if (this.liquidFunds() < amount) {
+        return { ok: false, error: 'money', need: amount, available: this.liquidFunds() };
+      }
+
+      var ofz = type === 'ofz';
+      this.capital -= amount;
+      this.investments.bonds.push({
+        id: 'b' + (this.investments.bonds.length + 1) + '-' + this.dayNumber,
+        type: type,
+        amount: amount,
+        rate: ofz ? 8 : 15,
+        monthsLeft: 12
+      });
+
+      this.log.push({
+        day: this.dayNumber,
+        type: 'treasury',
+        text: 'Куплено ' + (ofz ? 'ОФЗ' : 'корпоративных облигаций') + ' на ' + formatMoney(amount) + ' · доход ' + (ofz ? 8 : 15) + '%'
+      });
+      this.save();
+      return { ok: true };
+    },
+
+    bondsValue: function () {
+      return this.investments.bonds.reduce(function (sum, b) { return sum + b.amount; }, 0);
+    },
 
     /* ---------- Уровни банка ---------- */
     stageName: function () {
@@ -992,6 +1241,96 @@
         console.warn('[branch] некомплект · филиалов ' + this.branches + ', менеджеров ' + this.managers.length);
       }
 
+      /* казначейство: проценты по долгам, купоны */
+      var treasury = this.investments;
+      var treasuryNet = 0;
+
+      if (treasury.cbLoan > 0) {
+        var cbInterest = treasury.cbLoan * 0.25 / 12;
+        this.capital -= cbInterest;
+        treasuryNet -= cbInterest;
+        expense += cbInterest;
+        this.log.push({
+          day: this.dayNumber,
+          type: 'treasury',
+          text: 'Проценты ЦБ · −' + formatMoney(cbInterest) + ' · долг ' + formatMoney(treasury.cbLoan)
+        });
+      }
+
+      if (treasury.mbkTaken.amount > 0) {
+        var mbkIn = treasury.mbkTaken.amount * 0.15 / 12;
+        this.capital -= mbkIn;
+        treasuryNet -= mbkIn;
+        expense += mbkIn;
+        treasury.mbkTaken.monthsLeft -= 1;
+        if (treasury.mbkTaken.monthsLeft <= 0) {
+          this.capital -= treasury.mbkTaken.amount;
+          this.log.push({
+            day: this.dayNumber,
+            type: 'treasury',
+            text: 'МБК погашен: −' + formatMoney(treasury.mbkTaken.amount)
+          });
+          treasury.mbkTaken = { amount: 0, monthsLeft: 0 };
+        }
+      }
+
+      if (treasury.mbkGiven.amount > 0) {
+        var mbkOut = treasury.mbkGiven.amount * 0.12 / 12;
+        this.capital += mbkOut;
+        treasuryNet += mbkOut;
+        income += mbkOut;
+        treasury.mbkGiven.monthsLeft -= 1;
+        if (treasury.mbkGiven.monthsLeft <= 0) {
+          this.capital += treasury.mbkGiven.amount;
+          this.log.push({
+            day: this.dayNumber,
+            type: 'treasury',
+            text: 'МБК возвращён: +' + formatMoney(treasury.mbkGiven.amount)
+          });
+          treasury.mbkGiven = { amount: 0, monthsLeft: 0 };
+        }
+      }
+
+      var bonds = treasury.bonds;
+      var selfT = this;
+      bonds.forEach(function (bond) {
+        var coupon = bond.amount * (bond.rate / 100) / 12;
+        selfT.capital += coupon;
+        treasuryNet += coupon;
+        income += coupon;
+        bond.monthsLeft -= 1;
+
+        if (bond.type === 'corp' && Math.random() < 0.04) {
+          bond.defaulted = true;
+          selfT.log.push({
+            day: selfT.dayNumber,
+            type: 'default',
+            text: '❌ Дефолт эмитента · потеряно ' + formatMoney(bond.amount)
+          });
+          return;
+        }
+
+        if (bond.monthsLeft <= 0) {
+          selfT.capital += bond.amount;
+          bond.redeemed = true;
+          selfT.log.push({
+            day: selfT.dayNumber,
+            type: 'treasury',
+            text: 'Облигации погашены: +' + formatMoney(bond.amount)
+          });
+        }
+      });
+      treasury.bonds = bonds.filter(function (b) { return !b.defaulted && !b.redeemed; });
+
+      var fx = this.fxPosition();
+      if (fx.cost > 0) {
+        this.log.push({
+          day: this.dayNumber,
+          type: fx.pnl >= 0 ? 'treasury' : 'warn',
+          text: (fx.pnl >= 0 ? 'Курсовая прибыль: +' : 'Курсовой убыток: −') + formatMoney(Math.abs(fx.pnl))
+        });
+      }
+
       /* люди: застой, кроты, проверки СБ */
       this.applyLoyaltyDecay();
       this.processMoles();
@@ -1037,6 +1376,9 @@
       }
 
       this.date = new Date(this.startDate.getTime() + this.elapsedDays * 86400000);
+
+      this.driftCurrencies();
+      this.pushRatesHistory();
 
       /* поток зависит от числа филиалов */
       this.clientAcc += this.clientsPerDay;
@@ -1292,6 +1634,10 @@
           loans: this.activeLoans,
           deposits: this.activeDeposits,
           reputation: this.reputation,
+          ratesLog: this.ratesLog,
+          fxSpread: this.fxSpread,
+          currencies: this.currencies,
+          investments: this.investments,
           bankStage: this.bankStage,
           achievements: this.achievements,
           stats: this.stats,
@@ -1357,6 +1703,10 @@
         if (typeof data.playerLoanRate === 'number') this.playerLoanRate = data.playerLoanRate;
         if (typeof data.playerDepositRate === 'number') this.playerDepositRate = data.playerDepositRate;
         if (Array.isArray(data.competitors) && data.competitors.length) this.competitors = data.competitors;
+        if (Array.isArray(data.ratesLog)) this.ratesLog = data.ratesLog;
+        if (typeof data.fxSpread === 'number') this.fxSpread = data.fxSpread;
+        if (data.currencies) this.currencies = data.currencies;
+        if (data.investments) this.investments = data.investments;
         if (Number(data.bankStage)) this.bankStage = Number(data.bankStage);
         if (data.achievements) this.achievements = data.achievements;
         if (data.stats) this.stats = data.stats;
