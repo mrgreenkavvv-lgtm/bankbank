@@ -2248,3 +2248,12 @@ body, button, a, input, select, textarea,
 
 /* гений: точный потолок без штриховки */
 .pot-exact { font-size: var(--fs-15); color: var(--gold); letter-spacing: .5px; }
+
+/* портфель: день выдачи сделки */
+.pf-name small {
+  display: block;
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}

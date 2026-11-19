@@ -762,7 +762,7 @@
   }
 
   /* ---------- Портфель ---------- */
-  function pfSection(title, items) {
+  function pfSection(title, items, kind) {
     if (!items.length) {
       return '<div class="pf-sec">' +
         '<div class="pf-head"><span>' + title + ' · 0</span><b>0 ₽</b></div>' +
@@ -772,8 +772,12 @@
 
     var total = items.reduce(function (sum, x) { return sum + x.amount; }, 0);
     var rows = items.map(function (x) {
+      var since = x.openedDay
+        ? '<small class="pf-since">' + (kind === 'deposit' ? 'открыт' : 'выдан') + ' в день ' + x.openedDay + '</small>'
+        : '';
+
       return '<div class="pf-row">' +
-        '<span class="pf-name">' + x.name + '</span>' +
+        '<span class="pf-name">' + x.name + since + '</span>' +
         '<span class="pf-amt">' + money(x.amount) + '</span>' +
         '<span class="pf-term">' + x.monthsLeft + ' мес</span>' +
         '<span class="pf-rate">' + rateLabel(x.rate) + '</span>' +
@@ -798,7 +802,7 @@
     if (signature === last.portfolio) return;
     last.portfolio = signature;
 
-    box.innerHTML = pfSection('Выданные кредиты', loans) + pfSection('Принятые вклады', deposits);
+    box.innerHTML = pfSection('Выданные кредиты', loans, 'loan') + pfSection('Принятые вклады', deposits, 'deposit');
 
     var total = document.querySelector('[data-ui="pf-total"]');
     if (total) total.textContent = money(loans.reduce(function (s2, x) { return s2 + x.amount; }, 0));

@@ -2161,14 +2161,16 @@
     /* сколько игровых дней уходит на одного клиента */
     managerDaysPerClient: function (manager) {
       var speed = this.skillValue(manager, 'speed');
-      var days = 3 - speed / 50;          // скорость 100 → 1 день, 1 → ~3 дня
-      return Math.max(1, Math.min(3, days));
+      var days = 3 - speed / 50;          // 50 → 2 дня, 100 → 1 день, 150 → 0.5 дня
+      /* верхний порог снят: навыки выше 100 реально ускоряют работу */
+      return Math.max(0.2, Math.min(3, days));
     },
 
     /* шанс, что менеджер ошибочно одобрит рискового клиента */
     managerMistakeChance: function (manager) {
       var sum = this.skillValue(manager, 'analytics') + this.skillValue(manager, 'caution');
-      return Math.max(0.05, Math.min(0.6, (200 - sum) / 200));
+      /* порог 5% снят: сумма выше 190 продолжает снижать шанс ошибки */
+      return Math.max(0, Math.min(0.6, (200 - sum) / 200));
     },
 
     /* кого менеджер берёт в работу: первый не-VIP из очереди */
