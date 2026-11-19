@@ -750,8 +750,10 @@
     var letter = String(state.bankName || 'Восток').trim().charAt(0).toUpperCase();
     var color = LOGO_COLORS[state.logoColor] || LOGO_COLORS.gold;
 
+    var label = 'БАНК «' + name + '»';
     Array.prototype.forEach.call(document.querySelectorAll('[data-ui="bankname"]'), function (node) {
-      setText(node, 'БАНК «' + name + '»', 'bankname:' + name);
+      /* в кэш setText ключ один на все узлы — сравниваем напрямую */
+      if (node.textContent !== label) node.textContent = label;
     });
 
     Array.prototype.forEach.call(document.querySelectorAll('.brand-mark'), function (node) {
