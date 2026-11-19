@@ -1767,9 +1767,22 @@
       last.capital = cash;
     }
 
-    setText(els.date, state.dateLabel(), 'date');
-    setText(els.dayline, '09:40 · ' + state.dayLabel(), 'dayline');
-    setText(els.stage, state.stageName() + ' · ' + state.dayLabel(), 'stage');
+    /* дата и день дублируются в десктопной и мобильной шапке — обновляем все узлы */
+    var dateText = state.dateLabel();
+    var daylineText = '09:40 · ' + state.dayLabel();
+    var stageText = state.stageName() + ' · ' + state.dayLabel();
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="date"]'), function (node) {
+      if (node.textContent !== dateText) node.textContent = dateText;
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="dayline"]'), function (node) {
+      if (node.textContent !== daylineText) node.textContent = daylineText;
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="stage"]'), function (node) {
+      if (node.textContent !== stageText) node.textContent = stageText;
+    });
 
     if (document.documentElement.dataset.stage !== String(state.bankStage)) {
       document.documentElement.dataset.stage = String(state.bankStage);
