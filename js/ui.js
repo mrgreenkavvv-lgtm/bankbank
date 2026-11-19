@@ -334,10 +334,11 @@
     '</div>';
   }
 
-  var POTENTIAL_LABEL = { low: 'низкий', medium: 'средний', high: 'высокий' };
-  var POTENTIAL_TONE = { low: 'badge-muted', medium: 'badge-muted', high: 'badge-gold' };
+  var POTENTIAL_LABEL = { low: 'низкий', medium: 'средний', high: 'высокий', genius: 'гений' };
+  var POTENTIAL_TONE = { low: 'badge-muted', medium: 'badge-muted', high: 'badge-gold', genius: 'badge-gold' };
 
   function potentialRange(m) {
+    if (m.potential === 'genius') return '100 / 100';
     var max = m.potentialMax || 100;
     if (max <= 60) return '≈50–60';
     if (max <= 80) return '≈70–80';
@@ -346,21 +347,33 @@
 
   function potentialCardHtml(m) {
     var max = m.potentialMax || 100;
+    var genius = m.potential === 'genius';
     var capped = m.level >= max;
     var label = POTENTIAL_LABEL[m.potential] || 'средний';
+
+    var badgeText = capped ? 'потенциал исчерпан' : label;
+    var badgeTone = capped ? 'badge-coral' : (POTENTIAL_TONE[m.potential] || 'badge-muted');
+
+    if (genius && capped) {
+      badgeText = 'максимум';
+      badgeTone = 'badge-gold';
+    }
+
     var filled = Math.round((max / 100) * 5);
     var bars = '';
     for (var i = 0; i < 5; i += 1) bars += i < filled ? '▓' : '▒';
 
+    var meter = genius
+      ? '<span class="pot-exact num">100 / 100</span>'
+      : '<span class="pot-bars">' + bars + '</span>' +
+        '<span class="small num">' + potentialRange(m) + '</span>';
+
     return '<section class="card">' +
       '<div class="card-h"><h2>Потенциал</h2>' +
-        '<div class="r"><span class="badge ' + (capped ? 'badge-coral' : (POTENTIAL_TONE[m.potential] || 'badge-muted')) + '">' +
-          (capped ? 'потенциал исчерпан' : label) + '</span></div></div>' +
+        '<div class="r"><span class="badge ' + badgeTone + '">' +
+          (genius ? '👑 ' : '') + badgeText + '</span></div></div>' +
       '<div class="card-b">' +
-        '<div class="pot-row">' +
-          '<span class="pot-bars">' + bars + '</span>' +
-          '<span class="small num">' + potentialRange(m) + '</span>' +
-        '</div>' +
+        '<div class="pot-row">' + meter + '</div>' +
         '<div class="small muted" style="margin-top:6px">' +
           (capped
             ? max + ' / 100 · роста больше не будет'
@@ -616,7 +629,9 @@
       return '<div class="cand">' +
         '<div class="cand-top"><b>' + c.name + '</b>' +
           '<span class="badge ' + (POTENTIAL_TONE[c.potential] || 'badge-muted') + '" title="Потенциал: ' +
-            potentialRange(c) + '">потенциал ' + (POTENTIAL_LABEL[c.potential] || 'средний') + '</span>' +
+            potentialRange(c) + '">' +
+            (c.potential === 'genius' ? '👑 гений' : 'потенциал ' + (POTENTIAL_LABEL[c.potential] || 'средний')) +
+          '</span>' +
           '<span class="badge badge-muted">ур. ' + c.level + '</span></div>' +
         '<div class="cand-skills">' +
           '<span>аналитика ' + c.skills.analytics + '</span>' +

@@ -2245,3 +2245,6 @@ body, button, a, input, select, textarea,
 /* эмблема: буква или иконка */
 .brand-mark { transition: background .18s var(--ease), color .18s var(--ease); }
 .brand-mark svg, .ph-mono svg { display: block; }
+
+/* гений: точный потолок без штриховки */
+.pot-exact { font-size: var(--fs-15); color: var(--gold); letter-spacing: .5px; }

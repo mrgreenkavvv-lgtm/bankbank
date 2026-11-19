@@ -1599,11 +1599,26 @@
 
       var chars = Object.keys(CHARACTERS);
 
-      /* потенциал: потолок роста, скрытый от точного значения */
+      /* потенциал: потолок роста. Гений — 2% и всегда ровно 100 */
       var roll = Math.random();
-      var potential = roll < 0.5 ? 'low' : roll < 0.85 ? 'medium' : 'high';
-      var bounds = { low: [50, 60], medium: [70, 80], high: [90, 100] }[potential];
-      var potentialMax = bounds[0] + Math.floor(Math.random() * (bounds[1] - bounds[0] + 1));
+      var potential;
+      var potentialMax;
+
+      if (roll < 0.02) {
+        potential = 'genius';
+        potentialMax = 100;
+      } else if (roll < 0.52) {
+        potential = 'low';
+        potentialMax = 50 + Math.floor(Math.random() * 11);
+      } else if (roll < 0.87) {
+        potential = 'medium';
+        potentialMax = 70 + Math.floor(Math.random() * 11);
+      } else {
+        potential = 'high';
+        potentialMax = 90 + Math.floor(Math.random() * 11);
+      }
+
+      var market = Math.round(((30000 + level * 2200) * ((this.bonuses && this.bonuses.salaryMult) || 1)) / 1000) * 1000;
 
       return {
         id: 'cand' + NEW_CANDIDATE_SEQ,
@@ -1611,8 +1626,9 @@
         potentialMax: potentialMax,
         name: CANDIDATE_NAMES[Math.floor(Math.random() * CANDIDATE_NAMES.length)],
         level: level,
-        salary: Math.round(((30000 + level * 2200) * ((this.bonuses && this.bonuses.salaryMult) || 1)) / 1000) * 1000,
-        character: chars[Math.floor(Math.random() * chars.length)],
+        /* гений знает себе цену: двойной оклад */
+        salary: potential === 'genius' ? market * 2 : market,
+        character: potential === 'genius' ? 'ambitious' : chars[Math.floor(Math.random() * chars.length)],
         skills: {
           analytics: jitter(level),
           speed: jitter(level),
@@ -1699,6 +1715,14 @@
       if (this.activeManagerId === id) this.activeManagerId = this.managers[0].id;
 
       this.log.push({ day: this.dayNumber, type: 'fire', text: 'Уволен менеджер: ' + manager.name + ' · выходное пособие ' + formatMoney(severance) });
+
+      if (manager.potential === 'genius') {
+        this.log.push({
+          day: this.dayNumber,
+          type: 'warn',
+          text: '⚠ Вы уволили менеджера с потенциалом Гений!'
+        });
+      }
       console.log('[fire] ' + manager.name + ' · пособие ' + formatMoney(severance));
 
       this.checkCapital();
