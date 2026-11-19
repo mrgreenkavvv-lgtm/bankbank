@@ -11,8 +11,9 @@
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/components.css">
 <style>
-  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; }
-  .ob { width: 100%; max-width: 640px; }
+  body { display: flex; justify-content: center; min-height: 100vh; padding: 24px 16px; }
+  .ob { margin: auto; }
+  .ob { width: 100%; max-width: 760px; }
 
   .ob-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
   .ob-logo {
@@ -122,16 +123,94 @@
   <section class="ob-pane" data-pane="2" hidden>
     <div class="ob-cards" data-group="spec">
       <button class="ob-card" type="button" data-value="retail">
-        <b>Розничный</b>
-        <span>Вклады идут охотнее: +20% к шансу вкладов, клиенты менее рискованные (−1 к риску)</span>
+        <span class="ob-ico">🏦</span>
+        <span class="ob-card-body">
+          <b>Розничный</b>
+          <span class="ob-desc">Вклады идут охотнее, клиенты спокойнее</span>
+          <span class="ob-pro">+20% к вкладам · риск −1</span>
+          <span class="ob-con">маржа по кредитам −5%</span>
+        </span>
       </button>
       <button class="ob-card" type="button" data-value="corporate">
-        <b>Корпоративный</b>
-        <span>Дороже кредиты: +1,5 п.п. к ставке, но клиенты рискованнее (+1 к риску)</span>
+        <span class="ob-ico">🏢</span>
+        <span class="ob-card-body">
+          <b>Корпоративный</b>
+          <span class="ob-desc">Дорогие кредиты для бизнеса</span>
+          <span class="ob-pro">+15% к ставке по кредитам</span>
+          <span class="ob-con">риск +1 · поток −10%</span>
+        </span>
       </button>
       <button class="ob-card" type="button" data-value="universal">
-        <b>Универсальный</b>
-        <span>Без бонусов и без минусов — ровная игра</span>
+        <span class="ob-ico">🌍</span>
+        <span class="ob-card-body">
+          <b>Универсальный</b>
+          <span class="ob-desc">Ровная игра без перекосов</span>
+          <span class="ob-pro">без штрафов</span>
+          <span class="ob-con">без бонусов</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="mortgage">
+        <span class="ob-ico">💳</span>
+        <span class="ob-card-body">
+          <b>Ипотечный</b>
+          <span class="ob-desc">Длинные и крупные кредиты</span>
+          <span class="ob-pro">+25% к сумме кредитов · срок +12 мес.</span>
+          <span class="ob-con">риск +1</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="investment">
+        <span class="ob-ico">📈</span>
+        <span class="ob-card-body">
+          <b>Инвестиционный</b>
+          <span class="ob-desc">Ставка на купоны и валюту</span>
+          <span class="ob-pro">+10% к купонам · валюта волатильнее</span>
+          <span class="ob-con">поток клиентов −15%</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="micro">
+        <span class="ob-ico">🏧</span>
+        <span class="ob-card-body">
+          <b>Микрозаймы</b>
+          <span class="ob-desc">Много мелких займов</span>
+          <span class="ob-pro">+50% к потоку клиентов</span>
+          <span class="ob-con">риск +2 · сумма кредита −40%</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="vip">
+        <span class="ob-ico">💎</span>
+        <span class="ob-card-body">
+          <b>VIP-банк</b>
+          <span class="ob-desc">Крупные клиенты приходят чаще</span>
+          <span class="ob-pro">+30% к шансу VIP-заявок</span>
+          <span class="ob-con">зарплаты менеджеров +20%</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="currency">
+        <span class="ob-ico">🌐</span>
+        <span class="ob-card-body">
+          <b>Валютный</b>
+          <span class="ob-desc">Зарабатываем на спреде</span>
+          <span class="ob-pro">+15% к спреду · +10% капитала в валюте</span>
+          <span class="ob-con">проверки ЦБ раз в 120 дней</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="construction">
+        <span class="ob-ico">🏗</span>
+        <span class="ob-card-body">
+          <b>Строительный</b>
+          <span class="ob-desc">Финансируем стройку</span>
+          <span class="ob-pro">+20% к сумме кредитов</span>
+          <span class="ob-con">дефолт забирает всё тело кредита</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="cooperative">
+        <span class="ob-ico">🤝</span>
+        <span class="ob-card-body">
+          <b>Кооперативный</b>
+          <span class="ob-desc">Люди важнее денег</span>
+          <span class="ob-pro">+15 к лояльности менеджеров</span>
+          <span class="ob-con">зарплаты +10% · поток −5%</span>
+        </span>
       </button>
     </div>
   </section>
@@ -139,16 +218,94 @@
   <section class="ob-pane" data-pane="3" hidden>
     <div class="ob-cards" data-group="motiv">
       <button class="ob-card" type="button" data-value="honest">
-        <b>Честный банкир</b>
-        <span>Репутация 71, но штрафы ЦБ ×1,2 — репутация дороже денег</span>
+        <span class="ob-ico">🤵</span>
+        <span class="ob-card-body">
+          <b>Честный банкир</b>
+          <span class="ob-desc">Репутация дороже денег</span>
+          <span class="ob-pro">репутация +10</span>
+          <span class="ob-con">штрафы ЦБ ×1,2</span>
+        </span>
       </button>
       <button class="ob-card" type="button" data-value="shark">
-        <b>Акула рынка</b>
-        <span>Стартовый капитал ×1,05, репутация 56 — деньги решают</span>
+        <span class="ob-ico">🦈</span>
+        <span class="ob-card-body">
+          <b>Акула рынка</b>
+          <span class="ob-desc">Деньги решают всё</span>
+          <span class="ob-pro">капитал ×1,05</span>
+          <span class="ob-con">репутация −5</span>
+        </span>
       </button>
       <button class="ob-card" type="button" data-value="people">
-        <b>Народный банк</b>
-        <span>Поток клиентов ×1,2, но маржа ×0,9 — работаем на объём</span>
+        <span class="ob-ico">🏘</span>
+        <span class="ob-card-body">
+          <b>Народный банк</b>
+          <span class="ob-desc">Работаем на объём</span>
+          <span class="ob-pro">поток клиентов +20%</span>
+          <span class="ob-con">маржа ×0,9</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="aristocrat">
+        <span class="ob-ico">🎩</span>
+        <span class="ob-card-body">
+          <b>Аристократ</b>
+          <span class="ob-desc">Имя банка работает на нас</span>
+          <span class="ob-pro">репутация +15</span>
+          <span class="ob-con">зарплаты менеджеров +15%</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="analyst">
+        <span class="ob-ico">🧠</span>
+        <span class="ob-card-body">
+          <b>Аналитик</b>
+          <span class="ob-desc">Считаем наперёд</span>
+          <span class="ob-pro">точность прогнозов +20%</span>
+          <span class="ob-con">поток клиентов −10%</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="risky">
+        <span class="ob-ico">🔥</span>
+        <span class="ob-card-body">
+          <b>Рисковый игрок</b>
+          <span class="ob-desc">Кто не рискует, тот не банкир</span>
+          <span class="ob-pro">шанс выиграть на бирже +10%</span>
+          <span class="ob-con">риск дефолта +1</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="conservative">
+        <span class="ob-ico">🛡</span>
+        <span class="ob-card-body">
+          <b>Консерватор</b>
+          <span class="ob-desc">Тише едешь — дальше будешь</span>
+          <span class="ob-pro">риск дефолта −1</span>
+          <span class="ob-con">поток клиентов −15%</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="careerist">
+        <span class="ob-ico">💼</span>
+        <span class="ob-card-body">
+          <b>Карьерист</b>
+          <span class="ob-desc">Растим людей быстро</span>
+          <span class="ob-pro">рост менеджеров +20%</span>
+          <span class="ob-con">зарплаты +10%</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="expansionist">
+        <span class="ob-ico">🌍</span>
+        <span class="ob-card-body">
+          <b>Экспансионист</b>
+          <span class="ob-desc">Сеть важнее прибыли</span>
+          <span class="ob-pro">филиал дешевле на 20%</span>
+          <span class="ob-con">проверки ЦБ раз в 150 дней</span>
+        </span>
+      </button>
+      <button class="ob-card" type="button" data-value="ludoman">
+        <span class="ob-ico">🎲</span>
+        <span class="ob-card-body">
+          <b>Лудоман</b>
+          <span class="ob-desc">Живём от баффа до баффа</span>
+          <span class="ob-pro">шанс баффа +10%</span>
+          <span class="ob-con">лояльность падает на 20% быстрее</span>
+        </span>
       </button>
     </div>
   </section>

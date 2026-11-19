@@ -298,7 +298,22 @@
       riskDelta: 0,
       fineMult: 1,
       marginMult: 1,
-      capitalMult: 1
+      capitalMult: 1,
+      loanAmountMult: 1,
+      loanTermDelta: 0,
+      bondYieldMult: 1,
+      fxVolatilityMult: 1,
+      vipChanceBonus: 0,
+      salaryMult: 1,
+      branchCostMult: 1,
+      loyaltyGainBonus: 0,
+      loyaltyDecayMult: 1,
+      buffChanceBonus: 0,
+      growthMult: 1,
+      defaultLoss: 0.8,
+      corpDefaultMult: 1,
+      fxSpreadMult: 1,
+      inspectionDays: 0
     },
 
     /* ---------- Казначейство ---------- */
@@ -421,14 +436,15 @@
       ['usd', 'eur', 'cny'].forEach(function (code) {
         var c = self.currencies[code];
         c.prev = c.rate;
-        var drift = (Math.random() - 0.5) * 0.01;          // ±0,5% в день
+        var vol = (self.bonuses && self.bonuses.fxVolatilityMult) || 1;
+        var drift = (Math.random() - 0.5) * 0.01 * vol;      // ±0,5% в день
         c.rate = Math.max(1, Math.round(c.rate * (1 + drift) * 10000) / 10000);
       });
     },
 
     fxPrice: function (code, side) {
       var rate = this.currencies[code].rate;
-      var spread = this.fxSpread / 100;
+      var spread = (this.fxSpread / 100) * ((this.bonuses && this.bonuses.fxSpreadMult) || 1);
       return side === 'buy' ? rate * (1 + spread) : rate * (1 - spread);
     },
 
@@ -704,7 +720,7 @@
       this.motivation = opts.motiv || 'honest';
       this.difficulty = opts.diff || 'normal';
 
-      /* --- специализация --- */
+      /* --- сброс всех модификаторов --- */
       b.flowMult = 1;
       b.depShareMult = 1;
       b.loanRateDelta = 0;
@@ -712,31 +728,95 @@
       b.fineMult = 1;
       b.marginMult = 1;
       b.capitalMult = 1;
+      b.loanAmountMult = 1;
+      b.loanTermDelta = 0;
+      b.bondYieldMult = 1;
+      b.fxVolatilityMult = 1;
+      b.vipChanceBonus = 0;
+      b.salaryMult = 1;
+      b.branchCostMult = 1;
+      b.loyaltyGainBonus = 0;
+      b.loyaltyDecayMult = 1;
+      b.buffChanceBonus = 0;
+      b.growthMult = 1;
+      b.defaultLoss = 0.8;
+      b.corpDefaultMult = 1;
+      b.fxSpreadMult = 1;
+      b.inspectionDays = 0;
 
       this.playerLoanRate = 18;
       this.playerDepositRate = 10;
 
-      if (this.specialization === 'retail') {
-        b.depShareMult = 1.2;
-        b.riskDelta = -1;
-      } else if (this.specialization === 'corporate') {
-        b.loanRateDelta = 1.5;
-        b.riskDelta = 1;
-        this.playerLoanRate = 19.5;
+      /* --- специализация --- */
+      switch (this.specialization) {
+        case 'retail':
+          b.depShareMult = 1.2; b.riskDelta = -1; b.marginMult = 0.95;
+          break;
+        case 'corporate':
+          b.loanRateDelta = 2.7; b.riskDelta = 1; b.flowMult = 0.9;
+          this.playerLoanRate = 20.7;
+          break;
+        case 'mortgage':
+          b.loanAmountMult = 1.25; b.loanTermDelta = 12; b.riskDelta = 1;
+          break;
+        case 'investment':
+          b.bondYieldMult = 1.1; b.fxVolatilityMult = 1.05; b.flowMult = 0.85;
+          break;
+        case 'micro':
+          b.flowMult = 1.5; b.riskDelta = 2; b.loanAmountMult = 0.6;
+          break;
+        case 'vip':
+          b.vipChanceBonus = 0.3; b.salaryMult = 1.2;
+          break;
+        case 'currency':
+          b.fxSpreadMult = 1.15; b.inspectionDays = 120;
+          break;
+        case 'construction':
+          b.loanAmountMult = 1.2; b.defaultLoss = 1;
+          break;
+        case 'cooperative':
+          b.loyaltyGainBonus = 15; b.salaryMult = 1.1; b.flowMult = 0.95;
+          break;
+        default:
+          break;
       }
 
       /* --- мотивация --- */
       this.reputation = 61;
 
-      if (this.motivation === 'honest') {
-        this.reputation = 71;
-        b.fineMult = 1.2;
-      } else if (this.motivation === 'shark') {
-        this.reputation = 56;
-        b.capitalMult = 1.05;
-      } else if (this.motivation === 'people') {
-        b.flowMult = 1.2;
-        b.marginMult = 0.9;
+      switch (this.motivation) {
+        case 'honest':
+          this.reputation = 71; b.fineMult = 1.2;
+          break;
+        case 'shark':
+          this.reputation = 56; b.capitalMult = 1.05;
+          break;
+        case 'people':
+          b.flowMult *= 1.2; b.marginMult = 0.9;
+          break;
+        case 'aristocrat':
+          this.reputation = 76; b.salaryMult *= 1.15;
+          break;
+        case 'analyst':
+          b.flowMult *= 0.9;
+          break;
+        case 'risky':
+          b.corpDefaultMult = 0.9; b.riskDelta += 1;
+          break;
+        case 'conservative':
+          b.riskDelta -= 1; b.flowMult *= 0.85;
+          break;
+        case 'careerist':
+          b.growthMult = 1.2; b.salaryMult *= 1.1;
+          break;
+        case 'expansionist':
+          b.branchCostMult = 0.8; b.inspectionDays = 150;
+          break;
+        case 'ludoman':
+          b.buffChanceBonus = 0.1; b.loyaltyDecayMult = 1.2;
+          break;
+        default:
+          break;
       }
 
       /* --- сложность --- */
@@ -755,8 +835,28 @@
       }
 
       b.fineMult *= difficultyFine;
+
+      if (interval > 0 && b.inspectionDays > 0) {
+        interval = Math.min(interval, b.inspectionDays);
+      }
+
       this.capital = Math.round(base * b.capitalMult);
       this.startCapital = this.capital;
+
+      /* зарплаты менеджеров с модификатором */
+      if (b.salaryMult !== 1) {
+        this.managers.forEach(function (m) {
+          m.salary = Math.round((m.salary * b.salaryMult) / 1000) * 1000;
+        });
+      }
+
+      /* валютный банк: стартовый запас валюты */
+      if (this.specialization === 'currency') {
+        var usd = this.currencies.usd;
+        var stash = Math.round(this.capital * 0.1);
+        usd.amount = Math.round((stash / usd.rate) * 100) / 100;
+        usd.cost = stash;
+      }
 
       this.dayNumber = 41;
       this.elapsedDays = 0;
@@ -803,7 +903,7 @@
       }
 
       /* 10% на 10-м уровне → 50% на 90-м */
-      var chance = 0.1 + ((level - 10) / 80) * 0.4;
+      var chance = 0.1 + ((level - 10) / 80) * 0.4 + ((this.bonuses && this.bonuses.buffChanceBonus) || 0);
 
       if (Math.random() < chance) {
         var rare = RARE_BUFFS[Math.floor(Math.random() * RARE_BUFFS.length)];
@@ -948,7 +1048,7 @@
       m.skills.analytics = Math.min(100, m.skills.analytics + 2);
       m.skills.speed = Math.min(100, m.skills.speed + 2);
       m.skills.caution = Math.min(100, m.skills.caution + 2);
-      m.loyalty = Math.min(100, m.loyalty + 5);
+      m.loyalty = Math.min(100, m.loyalty + 5 + ((this.bonuses && this.bonuses.loyaltyGainBonus) || 0));
       m.promotedDay = this.dayNumber;
 
       m.courses = (m.courses || 0) + 1;
@@ -976,8 +1076,9 @@
         return { ok: false, error: 'money', need: cost, available: this.capital };
       }
 
-      var levels = m.level < 50 ? 10 : 5;
-      var loyaltyGain = 15 + Math.floor(Math.random() * 6);   // 15–20
+      var growth = (this.bonuses && this.bonuses.growthMult) || 1;
+      var levels = Math.round((m.level < 50 ? 10 : 5) * growth);
+      var loyaltyGain = 15 + Math.floor(Math.random() * 6) + ((this.bonuses && this.bonuses.loyaltyGainBonus) || 0);
       var bump = function (value) { return Math.min(100, value + 3 + Math.floor(Math.random() * 3)); };
 
       this.capital -= cost;
@@ -1070,6 +1171,9 @@
         } else if (character === 'perfectionist') {
           if (self.defaultsThisMonth > 0) drop += 3;
         }
+
+        var decayMult = (self.bonuses && self.bonuses.loyaltyDecayMult) || 1;
+        if (drop > 0 && decayMult !== 1) drop = Math.round(drop * decayMult);
 
         m.loyalty = Math.max(0, Math.min(100, m.loyalty - drop + bonus));
 
@@ -1342,7 +1446,7 @@
         potentialMax: potentialMax,
         name: CANDIDATE_NAMES[Math.floor(Math.random() * CANDIDATE_NAMES.length)],
         level: level,
-        salary: Math.round((30000 + level * 2200) / 1000) * 1000,
+        salary: Math.round(((30000 + level * 2200) * ((this.bonuses && this.bonuses.salaryMult) || 1)) / 1000) * 1000,
         character: chars[Math.floor(Math.random() * chars.length)],
         skills: {
           analytics: jitter(level),
@@ -1496,12 +1600,18 @@
     },
 
     /* ---------- Филиалы ---------- */
+    branchPrice: function () {
+      var mult = (this.bonuses && this.bonuses.branchCostMult) || 1;
+      return Math.round((this.branchCost * mult) / 100000) * 100000;
+    },
+
     openBranch: function () {
-      if (this.capital < this.branchCost) {
-        return { ok: false, error: 'money', need: this.branchCost, available: this.capital };
+      var price = this.branchPrice();
+      if (this.capital < price) {
+        return { ok: false, error: 'money', need: price, available: this.capital };
       }
 
-      this.capital -= this.branchCost;
+      this.capital -= price;
       this.branches += 1;
       this.queueLimit += 10;
       this.recalcFlow();
@@ -1509,7 +1619,7 @@
       this.log.push({
         day: this.dayNumber,
         type: 'branch',
-        text: 'Открыт филиал №' + this.branches + ' · ' + formatMoney(this.branchCost) + ' · очередь до ' + this.queueLimit
+        text: 'Открыт филиал №' + this.branches + ' · ' + formatMoney(price) + ' · очередь до ' + this.queueLimit
       });
       console.log('[branch] открыт №' + this.branches + ' · поток ' + this.clientsPerDay.toFixed(2) + '/день');
 
@@ -1556,10 +1666,16 @@
           loan.closed = 'default';
           defaults += 1;
           self.defaultsThisMonth += 1;
+
+          var lossRate = (self.bonuses && typeof self.bonuses.defaultLoss === 'number') ? self.bonuses.defaultLoss : 0.8;
+          var recovered = Math.round(loan.amount * (1 - lossRate));
+          if (recovered > 0) self.capital += recovered;
+
           self.log.push({
             day: self.dayNumber,
             type: 'default',
-            text: '❌ ДЕФОЛТ: ' + loan.name + ' не вернул ' + formatMoney(loan.amount)
+            text: '❌ ДЕФОЛТ: ' + loan.name + ' не вернул ' + formatMoney(loan.amount) +
+              (recovered > 0 ? ' · взыскано ' + formatMoney(recovered) : '')
           });
           console.warn('[economy] дефолт · ' + loan.name + ' · ' + formatMoney(loan.amount));
           return;
@@ -1670,13 +1786,14 @@
       var bonds = treasury.bonds;
       var selfT = this;
       bonds.forEach(function (bond) {
-        var coupon = bond.amount * (bond.rate / 100) / 12;
+        var coupon = bond.amount * (bond.rate / 100) / 12 * ((selfT.bonuses && selfT.bonuses.bondYieldMult) || 1);
         selfT.capital += coupon;
         treasuryNet += coupon;
         income += coupon;
         bond.monthsLeft -= 1;
 
-        if (bond.type === 'corp' && Math.random() < 0.04) {
+        var corpRisk = 0.04 * ((selfT.bonuses && selfT.bonuses.corpDefaultMult) || 1);
+        if (bond.type === 'corp' && Math.random() < corpRisk) {
           bond.defaulted = true;
           selfT.defaultsThisMonth += 1;
           selfT.log.push({
@@ -1957,8 +2074,27 @@
 
       var client = randomClient(this.dayNumber, type);
 
-      if (this.bonuses && this.bonuses.riskDelta) {
-        client.risk = Math.max(1, Math.min(5, client.risk + this.bonuses.riskDelta));
+      var bonus = this.bonuses || {};
+
+      if (bonus.riskDelta) {
+        client.risk = Math.max(1, Math.min(5, client.risk + bonus.riskDelta));
+      }
+
+      if (bonus.loanAmountMult && bonus.loanAmountMult !== 1) {
+        client.amount = Math.round((client.amount * bonus.loanAmountMult) / 1000) * 1000;
+        client.amount = Math.max(20000, Math.min(8000000, client.amount));
+      }
+
+      if (bonus.loanTermDelta && client.type === 'loan') {
+        client.term = Math.min(60, client.term + bonus.loanTermDelta);
+      }
+
+      /* VIP-банк: часть обычных клиентов приходит крупными */
+      if (bonus.vipChanceBonus > 0 && client.amount < 3000000 && Math.random() < bonus.vipChanceBonus) {
+        client.amount = Math.round((3000000 + Math.random() * 2500000) / 1000) * 1000;
+        client.isVip = true;
+      } else {
+        client.isVip = client.amount >= 3000000;
       }
 
       this.activeClients.unshift(client);
