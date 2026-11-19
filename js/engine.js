@@ -69,7 +69,7 @@
     timer = setInterval(tick, TICK_MS);
 
     if (global.GameUI) global.GameUI.syncControls();
-    console.log('[engine] старт · сборка 0.8.0 · ×' + state.speed + (state.paused ? ' · пауза' : '') + ' · ' +
+    console.log('[engine] старт · сборка ' + (state.appVersion || '') + ' · ×' + state.speed + (state.paused ? ' · пауза' : '') + ' · ' +
                 state.dayLength + ' с на игровой день · день ' + state.dayNumber +
                 ' · капитал ' + global.formatMoney(state.capital));
   }

@@ -984,6 +984,10 @@
       '</section>';
     }
 
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="version"]'), function (node) {
+      if (node.textContent !== state.appVersion) node.textContent = state.appVersion;
+    });
+
     var sw = document.querySelector('[data-ui="sw-status"]');
     if (sw) {
       var active = !!(navigator.serviceWorker && navigator.serviceWorker.controller);

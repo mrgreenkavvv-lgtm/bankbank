@@ -11,6 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
+  var APP_VERSION = 'v2.9.6';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -321,6 +322,8 @@
     ratePerDay: 0.001,
     salary: 200000,
     salaryEveryDays: 30,
+
+    appVersion: APP_VERSION,
 
     /* ---------- Профиль банка ---------- */
     bankName: 'Восток',
