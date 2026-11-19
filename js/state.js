@@ -1812,10 +1812,12 @@
 
     setPaused: function (value) {
       this.paused = !!value;
+      this.save();
     },
 
     togglePause: function () {
       this.paused = !this.paused;
+      this.save();
       return this.paused;
     },
 
@@ -2036,6 +2038,7 @@
           dayNumber: this.dayNumber,
           elapsedDays: this.elapsedDays,
           speed: this.speed,
+          paused: this.paused,
           flow: this.activeClients.slice(0, this.maxClients),
           queue: this.queue.slice(0, this.queueLimit),
           burned: this.burned,
@@ -2109,6 +2112,7 @@
 
         var speed = Number(data.speed);
         this.speed = [1, 2, 5, 10, 20, 50].indexOf(speed) >= 0 ? speed : 1;
+        this.paused = !!data.paused;
 
         if (Array.isArray(data.flow) && data.flow.length) {
           this.activeClients = data.flow.slice(0, this.maxClients);

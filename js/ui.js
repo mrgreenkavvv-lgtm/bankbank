@@ -1853,6 +1853,7 @@
 
     if (visible.length && visible.indexOf(state.speed) === -1) {
       state.speed = Math.max.apply(null, visible);
+      state.save();
     }
 
     bindQueue();

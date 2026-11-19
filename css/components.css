@@ -2104,3 +2104,13 @@ input[data-reserve-sum]:focus, input[data-cb-sum]:focus, input[data-mbk-sum]:foc
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .profile-head { flex-wrap: wrap; }
 }
+/* --------------------------------------------------------------------------
+   34. Мобильные жесты: без двойного тап-зума
+   -------------------------------------------------------------------------- */
+html, body { touch-action: manipulation; }
+
+body, button, a, input, select, textarea,
+.tabbar a, .rail a, .chip, .card, .btn, .segmented button, .speed button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
