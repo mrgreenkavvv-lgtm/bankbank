@@ -2114,3 +2114,9 @@ body, button, a, input, select, textarea,
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
+/* --------------------------------------------------------------------------
+   35. Потенциал менеджера
+   -------------------------------------------------------------------------- */
+.pot-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.pot-bars { font-family: var(--font-mono); font-size: var(--fs-15); color: var(--gold); letter-spacing: 1px; }
+.cand-top .badge { white-space: nowrap; }

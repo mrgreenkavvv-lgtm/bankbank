@@ -937,6 +937,7 @@
     trainManager: function (id) {
       var m = this.managerById(id);
       if (!m) return { ok: false, error: 'not-found' };
+      if (m.level >= (m.potentialMax || 100)) return { ok: false, error: 'potential' };
       if (m.level >= 100) return { ok: false, error: 'max' };
       if (this.capital < this.trainCost) {
         return { ok: false, error: 'money', need: this.trainCost, available: this.capital };
@@ -967,6 +968,7 @@
     promoteManager: function (id) {
       var m = this.managerById(id);
       if (!m) return { ok: false, error: 'not-found' };
+      if (m.level >= (m.potentialMax || 100)) return { ok: false, error: 'potential' };
       if (m.level >= 100) return { ok: false, error: 'max' };
 
       var cost = this.promoteCost(m);
@@ -1046,6 +1048,15 @@
         var bonus = 0;
         var character = m.character || 'calm';
         var monthsSincePromotion = m.promotedDay ? (self.dayNumber - m.promotedDay) / 30 : 99;
+
+        if (m.level >= (m.potentialMax || 100)) {
+          drop += 2;
+          self.log.push({
+            day: self.dayNumber,
+            type: 'warn',
+            text: '⚠ ' + m.name + ' достиг потолка ' + (m.potentialMax || 100) + ' · роста больше не будет'
+          });
+        }
 
         if (character === 'ambitious') {
           /* ненавидит застой: три месяца без повышения — падение сильнее */
@@ -1319,8 +1330,16 @@
 
       var chars = Object.keys(CHARACTERS);
 
+      /* потенциал: потолок роста, скрытый от точного значения */
+      var roll = Math.random();
+      var potential = roll < 0.5 ? 'low' : roll < 0.85 ? 'medium' : 'high';
+      var bounds = { low: [50, 60], medium: [70, 80], high: [90, 100] }[potential];
+      var potentialMax = bounds[0] + Math.floor(Math.random() * (bounds[1] - bounds[0] + 1));
+
       return {
         id: 'cand' + NEW_CANDIDATE_SEQ,
+        potential: potential,
+        potentialMax: potentialMax,
         name: CANDIDATE_NAMES[Math.floor(Math.random() * CANDIDATE_NAMES.length)],
         level: level,
         salary: Math.round((30000 + level * 2200) / 1000) * 1000,
@@ -1365,6 +1384,8 @@
         autopilot: false,
         progress: 0,
         character: cand.character || 'calm',
+        potential: cand.potential || 'medium',
+        potentialMax: cand.potentialMax || 75,
         buffs: [],
         buffLevels: [],
         courses: 0,
@@ -2124,6 +2145,13 @@
         this.reserved = Number(data.reserved) || 0;
         if (Array.isArray(data.managers) && data.managers.length) {
           this.managers = data.managers;
+          /* старые сейвы без потенциала — выдаём средний */
+          this.managers.forEach(function (m) {
+            if (!m.potentialMax) {
+              m.potential = m.potential || 'medium';
+              m.potentialMax = 75;
+            }
+          });
         }
         if (Number(data.branches)) this.branches = Number(data.branches);
         if (Number(data.queueLimit)) this.queueLimit = Number(data.queueLimit);

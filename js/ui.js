@@ -253,6 +253,42 @@
     '</div>';
   }
 
+  var POTENTIAL_LABEL = { low: 'низкий', medium: 'средний', high: 'высокий' };
+  var POTENTIAL_TONE = { low: 'badge-muted', medium: 'badge-muted', high: 'badge-gold' };
+
+  function potentialRange(m) {
+    var max = m.potentialMax || 100;
+    if (max <= 60) return '≈50–60';
+    if (max <= 80) return '≈70–80';
+    return '≈90–100';
+  }
+
+  function potentialCardHtml(m) {
+    var max = m.potentialMax || 100;
+    var capped = m.level >= max;
+    var label = POTENTIAL_LABEL[m.potential] || 'средний';
+    var filled = Math.round((max / 100) * 5);
+    var bars = '';
+    for (var i = 0; i < 5; i += 1) bars += i < filled ? '▓' : '▒';
+
+    return '<section class="card">' +
+      '<div class="card-h"><h2>Потенциал</h2>' +
+        '<div class="r"><span class="badge ' + (capped ? 'badge-coral' : (POTENTIAL_TONE[m.potential] || 'badge-muted')) + '">' +
+          (capped ? 'потенциал исчерпан' : label) + '</span></div></div>' +
+      '<div class="card-b">' +
+        '<div class="pot-row">' +
+          '<span class="pot-bars">' + bars + '</span>' +
+          '<span class="small num">' + potentialRange(m) + '</span>' +
+        '</div>' +
+        '<div class="small muted" style="margin-top:6px">' +
+          (capped
+            ? max + ' / 100 · роста больше не будет'
+            : 'сейчас ' + m.level + ' · потолок ' + max + ' из 100') +
+        '</div>' +
+      '</div>' +
+    '</section>';
+  }
+
   function goalCardHtml(m) {
     var goal = m.goal;
     if (!goal) return '';
@@ -376,7 +412,7 @@
                      state.managers.length, Math.round(state.capital), m.mole ? 1 : 0,
                      m.promotedDay || 0, m.character || '', (m.buffs || []).length,
                      m.goal ? (m.goal.done ? 'd' : m.goal.failed ? 'f' : String(state.goalProgress(m))) : '',
-                     m.courses || 0, m.cleanMonths || 0].join('|');
+                     m.courses || 0, m.cleanMonths || 0, m.potential || '', m.potentialMax || 0].join('|');
     if (signature === last.manager) return;
     last.manager = signature;
 
@@ -391,16 +427,17 @@
 
     var trainBtn = document.querySelector('[data-train]');
     var promoteBtn = document.querySelector('[data-promote]');
-    var maxed = m.level >= 100;
+    var capped = m.level >= (m.potentialMax || 100);
+    var maxed = m.level >= 100 || capped;
 
     if (trainBtn) {
       trainBtn.disabled = maxed || state.capital < state.trainCost;
-      trainBtn.title = maxed ? 'Максимальный уровень' : (state.capital < state.trainCost ? 'Не хватает денег' : '');
+      trainBtn.title = capped ? 'Потенциал исчерпан' : maxed ? 'Максимальный уровень' : (state.capital < state.trainCost ? 'Не хватает денег' : '');
     }
     if (promoteBtn) {
       var cost = state.promoteCost(m);
       promoteBtn.disabled = maxed || state.capital < cost;
-      promoteBtn.title = maxed ? 'Максимальный уровень' : (state.capital < cost ? 'Не хватает денег' : '');
+      promoteBtn.title = capped ? 'Потенциал исчерпан' : maxed ? 'Максимальный уровень' : (state.capital < cost ? 'Не хватает денег' : '');
     }
 
     var costTrain = document.querySelector('[data-ui="cost-train"]');
@@ -461,6 +498,7 @@
         '</div></div>' +
       '</section>' +
 
+      potentialCardHtml(m) +
       goalCardHtml(m) +
       buffsCardHtml(m) +
       achievementsCardHtml(m) +
@@ -486,7 +524,10 @@
     var rows = list.map(function (c) {
       var affordable = canPay >= c.salary;
       return '<div class="cand">' +
-        '<div class="cand-top"><b>' + c.name + '</b><span class="badge badge-muted">ур. ' + c.level + '</span></div>' +
+        '<div class="cand-top"><b>' + c.name + '</b>' +
+          '<span class="badge ' + (POTENTIAL_TONE[c.potential] || 'badge-muted') + '" title="Потенциал: ' +
+            potentialRange(c) + '">потенциал ' + (POTENTIAL_LABEL[c.potential] || 'средний') + '</span>' +
+          '<span class="badge badge-muted">ур. ' + c.level + '</span></div>' +
         '<div class="cand-skills">' +
           '<span>аналитика ' + c.skills.analytics + '</span>' +
           '<span>скорость ' + c.skills.speed + '</span>' +
@@ -1642,6 +1683,7 @@
         if (!trained.ok) {
           if (typeof global.showToast === 'function') {
             global.showToast(trained.error === 'money' ? 'Не хватает ' + money(trained.need)
+              : trained.error === 'potential' ? 'Потенциал исчерпан'
               : trained.error === 'max' ? 'Максимальный уровень' : 'Не получилось');
           }
           return;
@@ -1660,6 +1702,7 @@
         if (!grown.ok) {
           if (typeof global.showToast === 'function') {
             global.showToast(grown.error === 'money' ? 'Не хватает ' + money(grown.need)
+              : grown.error === 'potential' ? 'Потенциал исчерпан'
               : grown.error === 'max' ? 'Максимальный уровень' : 'Не получилось');
           }
           return;
@@ -1761,6 +1804,28 @@
           : 'Отказано');
       }
       last.manager = null;
+      render();
+    });
+  }
+
+  function bindBranchButton() {
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-open-branch]');
+      if (!btn || btn.disabled) return;
+
+      var res = state.openBranch();
+      if (!res.ok) {
+        if (typeof global.showToast === 'function') {
+          global.showToast('Не хватает: нужно ' + money(res.need || state.branchCost));
+        }
+        return;
+      }
+
+      if (typeof global.showToast === 'function') {
+        global.showToast('Филиал открыт · всего ' + res.branches + ', очередь до ' + res.queueLimit);
+      }
+
+      last.branchesPanel = null;
       render();
     });
   }
@@ -1867,6 +1932,7 @@
     bindStocks();
     bindSecurity();
     bindStage();
+    bindBranchButton();
     bindNegotiation();
     bindProfileReset();
     render();
