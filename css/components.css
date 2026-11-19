@@ -2241,3 +2241,7 @@ body, button, a, input, select, textarea,
 .workmode-box .segmented { flex: 0 0 auto; }
 
 .skill-val small { font-size: 10px; margin-left: 3px; }
+
+/* эмблема: буква или иконка */
+.brand-mark { transition: background .18s var(--ease), color .18s var(--ease); }
+.brand-mark svg, .ph-mono svg { display: block; }

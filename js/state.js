@@ -102,6 +102,20 @@
   ];
 
   /* старый type → категория уведомлений */
+  /* 10 строгих иконок эмблемы (viewBox 0 0 24 24, stroke) */
+  var LOGO_ICONS = {
+    shield: '<path d="M12 3l7 3v6c0 4.2-2.9 7.7-7 9-4.1-1.3-7-4.8-7-9V6z"/><path d="M9.5 12l1.8 1.8L15 10"/>',
+    coin: '<circle cx="12" cy="12" r="8"/><path d="M12 8v8"/><path d="M9.5 10.2h4a1.8 1.8 0 0 1 0 3.6h-4"/>',
+    chart: '<path d="M4 19h16"/><path d="M6 16l4-5 3.5 3L18 7"/>',
+    bank: '<path d="M3 9l9-5 9 5"/><path d="M5 9v9M9.7 9v9M14.3 9v9M19 9v9"/><path d="M3 19h18"/>',
+    diamond: '<path d="M12 3l4.5 6L12 21 7.5 9z"/><path d="M7.5 9h9"/>',
+    crown: '<path d="M3 18h18"/><path d="M4 18l-1-9 5.5 4L12 6l3.5 7L21 9l-1 9"/>',
+    key: '<circle cx="8" cy="12" r="3.6"/><path d="M11.6 12H21"/><path d="M18 12v3.5"/><path d="M15 12v2.5"/>',
+    safe: '<rect x="4" y="4" width="16" height="16" rx="2.5"/><circle cx="12" cy="12" r="3.2"/><path d="M12 8.8V7.4M12 16.6v-1.4"/>',
+    arrow: '<path d="M12 20V5"/><path d="M6 11l6-6 6 6"/>',
+    star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/>'
+  };
+
   var NOTIFY_CATEGORY = {
     loan: 'money', deposit: 'money', default: 'money', closed: 'money', month: 'money',
     treasury: 'money', bankrupt: 'money', stock: 'competitor',
@@ -312,6 +326,9 @@
     bankName: 'Восток',
     founderName: 'Основатель',
     logoColor: 'gold',
+    logoType: 'letter',
+    logoLetter: 'В',
+    logoIcon: 'shield',
     specialization: 'universal',
     motivation: 'honest',
     difficulty: 'normal',
@@ -783,6 +800,28 @@
       return base + bonus;
     },
 
+    /* ---------- Эмблема ---------- */
+    logoIconSvg: function (id, size) {
+      var paths = LOGO_ICONS[id] || LOGO_ICONS.shield;
+      var s = size || 24;
+
+      return '<svg viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="none" ' +
+        'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ' +
+        'aria-hidden="true">' + paths + '</svg>';
+    },
+
+    logoIconsList: function () {
+      return Object.keys(LOGO_ICONS);
+    },
+
+    setLogo: function (opts) {
+      if (opts.type) this.logoType = opts.type === 'icon' ? 'icon' : 'letter';
+      if (opts.color) this.logoColor = opts.color;
+      if (opts.icon && LOGO_ICONS[opts.icon]) this.logoIcon = opts.icon;
+      if (typeof opts.letter === 'string') this.logoLetter = opts.letter;
+      this.save();
+    },
+
     /* ---------- Уведомления ---------- */
     normalizeLog: function () {
       var self = this;
@@ -837,6 +876,9 @@
       this.bankName = String(opts.bankName || 'Восток').slice(0, 25);
       this.founderName = String(opts.founderName || 'Основатель').slice(0, 40);
       this.logoColor = opts.logoColor || 'gold';
+      this.logoType = opts.logoType === 'icon' ? 'icon' : 'letter';
+      this.logoIcon = LOGO_ICONS[opts.logoIcon] ? opts.logoIcon : 'shield';
+      this.logoLetter = String(this.bankName).trim().charAt(0).toUpperCase() || '?';
       this.specialization = opts.spec || 'universal';
       this.motivation = opts.motiv || 'honest';
       this.difficulty = opts.diff || 'normal';
@@ -2349,6 +2391,9 @@
           bankName: this.bankName,
           founderName: this.founderName,
           logoColor: this.logoColor,
+          logoType: this.logoType,
+          logoLetter: this.logoLetter,
+          logoIcon: this.logoIcon,
           specialization: this.specialization,
           motivation: this.motivation,
           difficulty: this.difficulty,
@@ -2459,6 +2504,9 @@
         if (typeof data.bankName === 'string') this.bankName = data.bankName;
         if (typeof data.founderName === 'string') this.founderName = data.founderName;
         if (typeof data.logoColor === 'string') this.logoColor = data.logoColor;
+        if (typeof data.logoType === 'string') this.logoType = data.logoType === 'icon' ? 'icon' : 'letter';
+        if (typeof data.logoLetter === 'string' && data.logoLetter) this.logoLetter = data.logoLetter;
+        if (typeof data.logoIcon === 'string' && LOGO_ICONS[data.logoIcon]) this.logoIcon = data.logoIcon;
         if (typeof data.specialization === 'string') this.specialization = data.specialization;
         if (typeof data.motivation === 'string') this.motivation = data.motivation;
         if (typeof data.difficulty === 'string') this.difficulty = data.difficulty;

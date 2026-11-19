@@ -77,6 +77,27 @@
   .ob-foot .hint { flex: 1; font-size: var(--fs-11); color: var(--text-3); }
   .ob-foot .btn { min-width: 130px; justify-content: center; }
 
+  .ob-icons {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .ob-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 46px;
+    border-radius: var(--r-m);
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text-2);
+    cursor: pointer;
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .ob-icon:hover { border-color: var(--border-strong); color: var(--text); }
+  .ob-icon.is-on { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); }
+
   .pulse { animation: pulse 1.6s ease-in-out infinite; }
   @keyframes pulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(200, 160, 74, .45); }
@@ -110,7 +131,15 @@
       <div class="ob-error" id="founder-err"></div>
     </div>
     <div>
-      <span class="ob-label">Цвет логотипа</span>
+      <span class="ob-label">Эмблема</span>
+      <div class="segmented" id="logotype" role="tablist">
+        <button type="button" class="is-on" data-logotype="letter">Буква</button>
+        <button type="button" data-logotype="icon">Символ</button>
+      </div>
+      <div class="ob-icons" id="icons" hidden></div>
+    </div>
+    <div>
+      <span class="ob-label">Цвет эмблемы</span>
       <div class="ob-colors" id="colors">
         <button class="ob-color is-on" type="button" data-color="gold" style="background:#C8A04A" aria-label="Латунь"></button>
         <button class="ob-color" type="button" data-color="mint" style="background:#3DDC97" aria-label="Мята"></button>
@@ -337,7 +366,11 @@
 <script src="js/state.js"></script>
 <script>
 (function () {
-  var pick = { bankName: '', founderName: '', logoColor: 'gold', spec: null, motiv: null, diff: null };
+  var pick = {
+    bankName: '', founderName: '', logoColor: 'gold',
+    logoType: 'letter', logoIcon: 'shield',
+    spec: null, motiv: null, diff: null
+  };
   var step = 1;
 
   var logo = document.getElementById('logo');
@@ -350,6 +383,40 @@
   var hint = document.querySelector('[data-hint]');
 
   var COLOR_HEX = { gold: '#C8A04A', mint: '#3DDC97', blue: '#4DA3FF', violet: '#9B8CFF' };
+
+  var iconsBox = document.getElementById('icons');
+  var logotypeBox = document.getElementById('logotype');
+
+  /* сетку иконок собираем из общего набора в state.js */
+  GameState.logoIconsList().forEach(function (id) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ob-icon' + (id === pick.logoIcon ? ' is-on' : '');
+    btn.dataset.icon = id;
+    btn.setAttribute('aria-label', id);
+    btn.innerHTML = GameState.logoIconSvg(id, 20);
+    iconsBox.appendChild(btn);
+  });
+
+  logotypeBox.addEventListener('click', function (event) {
+    var btn = event.target.closest('[data-logotype]');
+    if (!btn) return;
+    pick.logoType = btn.dataset.logotype;
+    logotypeBox.querySelectorAll('[data-logotype]').forEach(function (b) {
+      b.classList.toggle('is-on', b === btn);
+    });
+    refresh();
+  });
+
+  iconsBox.addEventListener('click', function (event) {
+    var btn = event.target.closest('[data-icon]');
+    if (!btn) return;
+    pick.logoIcon = btn.dataset.icon;
+    iconsBox.querySelectorAll('[data-icon]').forEach(function (b) {
+      b.classList.toggle('is-on', b === btn);
+    });
+    refresh();
+  });
 
   function nameOk() {
     var v = nameInput.value.trim();
@@ -370,8 +437,21 @@
 
   function refresh() {
     var first = nameInput.value.trim().charAt(0).toUpperCase();
-    logo.textContent = first || 'М';
-    logo.style.background = COLOR_HEX[pick.logoColor] || COLOR_HEX.gold;
+    var color = COLOR_HEX[pick.logoColor] || COLOR_HEX.gold;
+
+    if (pick.logoType === 'icon') {
+      logo.textContent = '';
+      logo.innerHTML = GameState.logoIconSvg(pick.logoIcon, 32);
+      logo.style.background = 'rgba(255,255,255,.07)';
+      logo.style.color = color;
+    } else {
+      logo.innerHTML = '';
+      logo.textContent = first || '?';
+      logo.style.background = color;
+      logo.style.color = '#0A0E13';
+    }
+
+    iconsBox.hidden = pick.logoType !== 'icon';
 
     nameErr.textContent = nameInput.value.trim() && !nameOk() ? 'От 3 до 25 символов' : '';
     founderErr.textContent = founderInput.value.trim() && !founderOk() ? 'От 2 до 40 символов' : '';
@@ -445,6 +525,8 @@
       bankName: nameInput.value.trim(),
       founderName: founderInput.value.trim(),
       logoColor: pick.logoColor,
+      logoType: pick.logoType,
+      logoIcon: pick.logoIcon,
       spec: pick.spec,
       motiv: pick.motiv,
       diff: pick.diff

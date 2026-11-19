@@ -887,9 +887,20 @@
       if (node.textContent !== label) node.textContent = label;
     });
 
+    var sig = state.logoType + ':' + state.logoIcon + ':' + state.logoLetter + ':' + state.logoColor;
     Array.prototype.forEach.call(document.querySelectorAll('.brand-mark'), function (node) {
-      if (node.textContent !== letter) node.textContent = letter;
-      node.style.background = color;
+      if (node.dataset.logoSig === sig) return;
+      node.dataset.logoSig = sig;
+
+      if (state.logoType === 'icon') {
+        node.innerHTML = state.logoIconSvg(state.logoIcon, 22);
+        node.style.color = color;
+        node.style.background = 'rgba(255,255,255,.07)';
+      } else {
+        node.textContent = state.logoLetter || letter;
+        node.style.color = '#0A0E13';
+        node.style.background = color;
+      }
     });
   }
 
@@ -905,7 +916,11 @@
     var letter = String(state.bankName || 'В').trim().charAt(0).toUpperCase();
 
     head.innerHTML =
-      '<div class="ph-mono" style="background:' + color + '">' + letter + '</div>' +
+      '<div class="ph-mono"' + (state.logoType === 'icon'
+        ? ' style="background:rgba(255,255,255,.07);color:' + color + '"'
+        : ' style="background:' + color + '"') + '>' +
+        (state.logoType === 'icon' ? state.logoIconSvg(state.logoIcon, 30) : letter) +
+      '</div>' +
       '<div class="ph-body">' +
         '<h1>' + state.bankName + '</h1>' +
         '<div class="ph-meta">' + state.stageName() + ' · основатель: ' + state.founderName + '</div>' +
