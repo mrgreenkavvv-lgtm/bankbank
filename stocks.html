@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="assets/fonts/fonts.css">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/components.css">
+<script>try{if(!localStorage.getItem('bank-save'))location.replace('onboarding.html');}catch(e){}</script>
 <script>try{var d=localStorage.getItem('bank-density');if(d)document.documentElement.dataset.density=d;}catch(e){}</script>
 </head>
 <body data-page="stocks">
@@ -38,7 +39,7 @@
     <div class="brand">
       <div class="brand-mark">В</div>
       <div>
-        <div class="brand-name">БАНК «ВОСТОК»</div>
+        <div class="brand-name" data-ui="bankname">БАНК «ВОСТОК»</div>
         <div class="brand-stage" data-ui="stage">Ларёк · 2-й месяц</div>
       </div>
     </div>
@@ -80,7 +81,7 @@
       <div class="brand">
         <div class="brand-mark">В</div>
         <div>
-          <div class="brand-name">БАНК «ВОСТОК»</div>
+          <div class="brand-name" data-ui="bankname">БАНК «ВОСТОК»</div>
           <div class="brand-stage" data-ui="stage">Ларёк · день 41</div>
         </div>
       </div>
@@ -117,7 +118,7 @@
       <a href="security.html"><svg class="ic"><use href="#i-shield"/></svg><span>Безопасность</span></a>
       <a href="more.html#reports"><svg class="ic"><use href="#i-file"/></svg><span>Отчёты</span></a>
       <div class="bottom">
-        <a href="more.html#settings"><svg class="ic"><use href="#i-gear"/></svg><span>Настройки</span></a>
+        <a href="profile.html"><svg class="ic"><use href="#i-gear"/></svg><span>Профиль</span></a>
       </div>
     </nav>
 

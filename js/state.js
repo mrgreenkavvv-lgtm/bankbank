@@ -188,7 +188,8 @@
         });
       }
 
-      var fine = rows.reduce(function (sum, r) { return sum + (r.ok ? 0 : r.fine); }, 0);
+      var fineMult = (this.bonuses && this.bonuses.fineMult) || 1;
+      var fine = Math.round(rows.reduce(function (sum, r) { return sum + (r.ok ? 0 : r.fine); }, 0) * fineMult);
 
       this.inspection = {
         day: this.dayNumber,
@@ -279,6 +280,26 @@
     ratePerDay: 0.001,
     salary: 200000,
     salaryEveryDays: 30,
+
+    /* ---------- Профиль банка ---------- */
+    bankName: 'Восток',
+    founderName: 'Основатель',
+    logoColor: 'gold',
+    specialization: 'universal',
+    motivation: 'honest',
+    difficulty: 'normal',
+    totalLoansIssued: 0,
+    totalDepositsTaken: 0,
+
+    bonuses: {
+      flowMult: 1,
+      depShareMult: 1,
+      loanRateDelta: 0,
+      riskDelta: 0,
+      fineMult: 1,
+      marginMult: 1,
+      capitalMult: 1
+    },
 
     /* ---------- Казначейство ---------- */
     ratesLog: [],
@@ -670,6 +691,81 @@
       });
 
       return unlocked;
+    },
+
+    /* ---------- Онбординг ---------- */
+    applyOnboarding: function (opts) {
+      var b = this.bonuses;
+
+      this.bankName = String(opts.bankName || 'Восток').slice(0, 25);
+      this.founderName = String(opts.founderName || 'Основатель').slice(0, 40);
+      this.logoColor = opts.logoColor || 'gold';
+      this.specialization = opts.spec || 'universal';
+      this.motivation = opts.motiv || 'honest';
+      this.difficulty = opts.diff || 'normal';
+
+      /* --- специализация --- */
+      b.flowMult = 1;
+      b.depShareMult = 1;
+      b.loanRateDelta = 0;
+      b.riskDelta = 0;
+      b.fineMult = 1;
+      b.marginMult = 1;
+      b.capitalMult = 1;
+
+      this.playerLoanRate = 18;
+      this.playerDepositRate = 10;
+
+      if (this.specialization === 'retail') {
+        b.depShareMult = 1.2;
+        b.riskDelta = -1;
+      } else if (this.specialization === 'corporate') {
+        b.loanRateDelta = 1.5;
+        b.riskDelta = 1;
+        this.playerLoanRate = 19.5;
+      }
+
+      /* --- мотивация --- */
+      this.reputation = 61;
+
+      if (this.motivation === 'honest') {
+        this.reputation = 71;
+        b.fineMult = 1.2;
+      } else if (this.motivation === 'shark') {
+        this.reputation = 56;
+        b.capitalMult = 1.05;
+      } else if (this.motivation === 'people') {
+        b.flowMult = 1.2;
+        b.marginMult = 0.9;
+      }
+
+      /* --- сложность --- */
+      var base = 8420000;
+      var interval = 180;
+      var difficultyFine = 1;
+
+      if (this.difficulty === 'hardcore') {
+        base = 5000000;
+        interval = 90;
+        difficultyFine = 2;
+      } else if (this.difficulty === 'sandbox') {
+        base = 50000000;
+        interval = 0;
+        difficultyFine = 0;
+      }
+
+      b.fineMult *= difficultyFine;
+      this.capital = Math.round(base * b.capitalMult);
+      this.startCapital = this.capital;
+
+      this.dayNumber = 41;
+      this.elapsedDays = 0;
+      this.nextInspectionDay = interval ? this.dayNumber + interval : 999999;
+      this.prevCapital = this.capital;
+
+      this.recalcFlow();
+      this.save();
+      return this;
     },
 
     /* ---------- Характеры, баффы, цели ---------- */
@@ -1104,7 +1200,8 @@
     /* поток клиентов: (0,25 + 2 за филиал + бонусы) × 1,2 */
     recalcFlow: function () {
       var base = 0.25 + 2 * Math.max(0, this.branches - 1) + (this.flowBonus || 0);
-      this.clientsPerDay = Math.round(base * 1.2 * 100) / 100;
+      var mult = (this.bonuses && this.bonuses.flowMult) || 1;
+      this.clientsPerDay = Math.round(base * 1.2 * mult * 100) / 100;
     },
 
     /* ---------- Найм ---------- */
@@ -1428,7 +1525,7 @@
 
       /* ---- кредиты: наш доход ---- */
       this.activeLoans.forEach(function (loan) {
-        var interest = loan.amount * (loan.rate / 100) / 12;
+        var interest = loan.amount * (loan.rate / 100) / 12 * ((self.bonuses && self.bonuses.marginMult) || 1);
         self.capital += interest;
         income += interest;
         loan.monthsLeft -= 1;
@@ -1808,7 +1905,7 @@
     spawnClient: function () {
       /* привлекательность наших условий: конкуренты переманивают клиентов */
       var adv = this.rateAdvantage();
-      var depositShare = Math.max(0.15, Math.min(0.75, 0.34 + adv.deposit * 0.04));
+      var depositShare = Math.max(0.15, Math.min(0.75, (0.34 + adv.deposit * 0.04) * ((this.bonuses && this.bonuses.depShareMult) || 1)));
       var loanShare = Math.max(0.15, Math.min(0.85, 0.66 + adv.loan * 0.04));
       var total = depositShare + loanShare;
 
@@ -1836,6 +1933,10 @@
       }
 
       var client = randomClient(this.dayNumber, type);
+
+      if (this.bonuses && this.bonuses.riskDelta) {
+        client.risk = Math.max(1, Math.min(5, client.risk + this.bonuses.riskDelta));
+      }
 
       this.activeClients.unshift(client);
       if (this.activeClients.length > this.maxClients) {
@@ -1892,6 +1993,7 @@
           openedDay: this.dayNumber
         });
         this.stats.loansIssued += 1;
+        this.totalLoansIssued += 1;
         this.checkAchievements();
         this.log.push({ day: this.dayNumber, type: 'loan', text: 'Выдан кредит · ' + client.name + ' · ' + formatMoney(client.amount) });
         console.log('[state] одобрен кредит · ' + client.name + ' · −' + formatMoney(client.amount));
@@ -1902,6 +2004,7 @@
           rate: client.rate, monthsLeft: client.term, risk: client.risk,
           openedDay: this.dayNumber
         });
+        this.totalDepositsTaken += 1;
         this.log.push({ day: this.dayNumber, type: 'deposit', text: 'Принят вклад · ' + client.name + ' · ' + formatMoney(client.amount) });
         console.log('[state] принят вклад · ' + client.name + ' · +' + formatMoney(client.amount));
       }
@@ -1949,6 +2052,16 @@
           loans: this.activeLoans,
           deposits: this.activeDeposits,
           reputation: this.reputation,
+          startCapital: this.startCapital,
+          bankName: this.bankName,
+          founderName: this.founderName,
+          logoColor: this.logoColor,
+          specialization: this.specialization,
+          motivation: this.motivation,
+          difficulty: this.difficulty,
+          totalLoansIssued: this.totalLoansIssued,
+          totalDepositsTaken: this.totalDepositsTaken,
+          bonuses: this.bonuses,
           negotiation: this.negotiation,
           defaultsThisMonth: this.defaultsThisMonth,
           prevCapital: this.prevCapital,
@@ -2022,6 +2135,16 @@
         if (typeof data.playerLoanRate === 'number') this.playerLoanRate = data.playerLoanRate;
         if (typeof data.playerDepositRate === 'number') this.playerDepositRate = data.playerDepositRate;
         if (Array.isArray(data.competitors) && data.competitors.length) this.competitors = data.competitors;
+        if (typeof data.startCapital === 'number') this.startCapital = data.startCapital;
+        if (typeof data.bankName === 'string') this.bankName = data.bankName;
+        if (typeof data.founderName === 'string') this.founderName = data.founderName;
+        if (typeof data.logoColor === 'string') this.logoColor = data.logoColor;
+        if (typeof data.specialization === 'string') this.specialization = data.specialization;
+        if (typeof data.motivation === 'string') this.motivation = data.motivation;
+        if (typeof data.difficulty === 'string') this.difficulty = data.difficulty;
+        if (typeof data.totalLoansIssued === 'number') this.totalLoansIssued = data.totalLoansIssued;
+        if (typeof data.totalDepositsTaken === 'number') this.totalDepositsTaken = data.totalDepositsTaken;
+        if (data.bonuses) this.bonuses = data.bonuses;
         if (data.negotiation) this.negotiation = data.negotiation;
         if (typeof data.defaultsThisMonth === 'number') this.defaultsThisMonth = data.defaultsThisMonth;
         if (typeof data.prevCapital === 'number') this.prevCapital = data.prevCapital;

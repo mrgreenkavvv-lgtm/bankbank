@@ -742,6 +742,88 @@
       '</div>';
   }
 
+  /* ---------- Бренд ---------- */
+  var LOGO_COLORS = { gold: '#C8A04A', mint: '#3DDC97', blue: '#4DA3FF', violet: '#9B8CFF' };
+
+  function renderBrand() {
+    var name = String(state.bankName || 'Восток').toUpperCase();
+    var letter = String(state.bankName || 'Восток').trim().charAt(0).toUpperCase();
+    var color = LOGO_COLORS[state.logoColor] || LOGO_COLORS.gold;
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="bankname"]'), function (node) {
+      setText(node, 'БАНК «' + name + '»', 'bankname:' + name);
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.brand-mark'), function (node) {
+      if (node.textContent !== letter) node.textContent = letter;
+      node.style.background = color;
+    });
+  }
+
+  /* ---------- Профиль ---------- */
+  function renderProfile() {
+    var head = document.querySelector('[data-ui="profile-head"]');
+    if (!head) return;
+
+    var got = state.achievementList().filter(function (a) { return a.got; });
+    var total = state.achievementList().length;
+    var days = state.elapsedDays || 0;
+    var color = LOGO_COLORS[state.logoColor] || LOGO_COLORS.gold;
+    var letter = String(state.bankName || 'В').trim().charAt(0).toUpperCase();
+
+    head.innerHTML =
+      '<div class="ph-mono" style="background:' + color + '">' + letter + '</div>' +
+      '<div class="ph-body">' +
+        '<h1>' + state.bankName + '</h1>' +
+        '<div class="ph-meta">' + state.stageName() + ' · основатель: ' + state.founderName + '</div>' +
+        '<div class="ph-meta muted">Дней в деле: ' + days + '</div>' +
+      '</div>' +
+      '<div class="ph-level">' + state.bankStage + '<i>/7</i></div>';
+
+    var stats = document.querySelector('[data-ui="profile-stats"]');
+    if (stats) {
+      var cells = [
+        { label: 'Капитал', value: money(state.capital) },
+        { label: 'Репутация', value: String(state.reputation) },
+        { label: 'Филиалы', value: String(state.branches) },
+        { label: 'Менеджеры', value: String(state.managers.length) },
+        { label: 'Выдано кредитов', value: String(state.totalLoansIssued || 0) },
+        { label: 'Принято вкладов', value: String(state.totalDepositsTaken || 0) }
+      ];
+
+      stats.innerHTML = cells.map(function (c) {
+        return '<div class="stat-cell"><span>' + c.label + '</span><b class="num">' + c.value + '</b></div>';
+      }).join('');
+    }
+
+    var ach = document.querySelector('[data-ui="profile-ach"]');
+    if (ach) {
+      var icons = state.achievementList().map(function (a) {
+        return '<span class="ach-mini' + (a.got ? ' is-got' : '') + '" title="' + a.name + '">' +
+          (a.got ? '🏆' : '🔒') + '</span>';
+      }).join('');
+
+      ach.innerHTML = '<section class="card">' +
+        '<div class="card-h"><h2>Достижения</h2>' +
+          '<div class="r"><a class="link-more" href="achievements.html">Все →</a></div></div>' +
+        '<div class="card-b">' +
+          '<div class="between" style="margin-bottom:10px">' +
+            '<b>' + got.length + ' из ' + total + '</b>' +
+            '<span class="small muted">' + Math.round((got.length / total) * 100) + '%</span>' +
+          '</div>' +
+          '<div class="track"><i style="width:' + Math.round((got.length / total) * 100) + '%"></i></div>' +
+          '<div class="ach-minirow">' + icons + '</div>' +
+        '</div>' +
+      '</section>';
+    }
+
+    var sw = document.querySelector('[data-ui="sw-status"]');
+    if (sw) {
+      var active = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+      sw.textContent = 'Service Worker: ' + (active ? 'оффлайн активен' : 'прогрев');
+    }
+  }
+
   /* ---------- Казначейство ---------- */
   var treasuryTab = 'rates';
 
@@ -1407,6 +1489,8 @@
     renderAutopilot();
     renderPortfolio();
     renderProfit();
+    renderBrand();
+    renderProfile();
     renderReputation();
     renderRatios();
     renderInspection();
@@ -1647,6 +1731,19 @@
     });
   }
 
+  function bindProfileReset() {
+    if (!document.querySelector('[data-ui="profile-head"]')) return;
+
+    var btn = document.querySelector('[data-reset]');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+      if (!window.confirm('Сбросить прогресс? Банк придётся зарегистрировать заново.')) return;
+      try { localStorage.removeItem('bank-save'); } catch (e) {}
+      window.location.href = 'onboarding.html';
+    });
+  }
+
   function bindNegotiation() {
     document.addEventListener('click', function (event) {
       var btn = event.target.closest && event.target.closest('[data-neg]');
@@ -1768,6 +1865,7 @@
     bindSecurity();
     bindStage();
     bindNegotiation();
+    bindProfileReset();
     render();
     syncControls();
   }

@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="assets/fonts/fonts.css">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/components.css">
+<script>try{if(!localStorage.getItem('bank-save'))location.replace('onboarding.html');}catch(e){}</script>
 <script>try{var d=localStorage.getItem('bank-density');if(d)document.documentElement.dataset.density=d;}catch(e){}</script>
 </head>
 <body data-page="cbr">
@@ -29,7 +30,7 @@
     <div class="brand">
       <div class="brand-mark">В</div>
       <div>
-        <div class="brand-name">БАНК «ВОСТОК»</div>
+        <div class="brand-name" data-ui="bankname">БАНК «ВОСТОК»</div>
         <div class="brand-stage" data-ui="stage">Ларёк · день 41</div>
       </div>
     </div>
@@ -60,7 +61,7 @@
       <div class="brand">
         <div class="brand-mark">В</div>
         <div>
-          <div class="brand-name">БАНК «ВОСТОК»</div>
+          <div class="brand-name" data-ui="bankname">БАНК «ВОСТОК»</div>
           <div class="brand-stage" data-ui="stage">Ларёк · день 41</div>
         </div>
       </div>

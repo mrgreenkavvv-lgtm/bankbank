@@ -2044,3 +2044,63 @@ input[data-reserve-sum]:focus, input[data-cb-sum]:focus, input[data-mbk-sum]:foc
 @media (max-width: 860px) {
   .neg-actions .btn { min-width: 0; flex: 1 1 100%; }
 }
+/* --------------------------------------------------------------------------
+   33. Онбординг и профиль
+   -------------------------------------------------------------------------- */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  border-radius: var(--r-l);
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+.ph-mono {
+  width: 64px; height: 64px; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; font-weight: 700; color: #0A0E13;
+  flex: 0 0 64px;
+}
+.ph-body { flex: 1; min-width: 0; }
+.ph-body h1 { font-size: var(--fs-19); line-height: 1.2; margin-bottom: 4px; }
+.ph-meta { font-size: var(--fs-11); color: var(--text-2); }
+.ph-level {
+  font-size: var(--fs-28); font-weight: 600; color: var(--gold);
+  font-family: var(--font-mono);
+}
+.ph-level i { font-size: var(--fs-12); font-style: normal; color: var(--text-3); }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+.stat-cell {
+  padding: 12px 14px;
+  border-radius: var(--r-m);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-cell span { font-size: var(--fs-10); text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+.stat-cell b { font-size: var(--fs-15); }
+
+.ach-minirow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.ach-mini {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--raised); font-size: 15px;
+  filter: grayscale(1); opacity: .55;
+}
+.ach-mini.is-got { filter: none; opacity: 1; background: var(--gold-dim); }
+
+@media (max-width: 1100px) {
+  .stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-head { flex-wrap: wrap; }
+}
