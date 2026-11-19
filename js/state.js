@@ -55,6 +55,52 @@
     'Зайцев Павел', 'Орлова Ксения', 'Белов Никита', 'Гусева Ирина'
   ];
 
+  var CHARACTERS = {
+    ambitious:    { name: 'Амбициозный',    hint: 'Ненавидит застой: без повышения дольше 3 месяцев теряет лояльность сильнее' },
+    calm:         { name: 'Спокойный',      hint: 'Ценит стабильность: ни бонусов, ни штрафов' },
+    perfectionist:{ name: 'Перфекционист',  hint: 'Ненавидит ошибки: каждый дефолт в портфеле бьёт по лояльности' },
+    loyalist:     { name: 'Лоялист',        hint: 'Ценит банк: при росте капитала +1, при дефолте −4' },
+    materialist:  { name: 'Материалист',    hint: 'Ценит деньги: ниже рынка −4, выше рынка +3' }
+  };
+
+  var RARE_BUFFS = [
+    { name: 'Скоростной',   desc: '+15 к скорости',     apply: { speed: 15 } },
+    { name: 'Аналитик',     desc: '+15 к аналитике',    apply: { analytics: 15 } },
+    { name: 'Страж',        desc: '+15 к осторожности',  apply: { caution: 15 } },
+    { name: 'Харизматик',   desc: '+10 к лояльности',    apply: { loyalty: 10 } },
+    { name: 'Трудяга',      desc: '+10 к скорости',      apply: { speed: 10 } },
+    { name: 'Стратег',      desc: '+12 к аналитике',     apply: { analytics: 12 } },
+    { name: 'Осторожный',   desc: '+12 к осторожности',  apply: { caution: 12 } },
+    { name: 'Верный',       desc: '+12 к лояльности',    apply: { loyalty: 12 } }
+  ];
+
+  var LEGENDARY_BUFFS = [
+    { name: 'Легенда',      desc: '+10 ко всем навыкам',        apply: { analytics: 10, speed: 10, caution: 10 } },
+    { name: 'Гуру',         desc: '+20 к аналитике',            apply: { analytics: 20 } },
+    { name: 'Молния',       desc: '+20 к скорости',             apply: { speed: 20 } },
+    { name: 'Скала',        desc: '+20 к осторожности',         apply: { caution: 20 } },
+    { name: 'Оракул',       desc: '+15 к аналитике и +10 к осторожности', apply: { analytics: 15, caution: 10 } },
+    { name: 'Титан',        desc: '+10 ко всем навыкам и +5 к лояльности', apply: { analytics: 10, speed: 10, caution: 10, loyalty: 5 } },
+    { name: 'Икона',        desc: '+25 к лояльности',           apply: { loyalty: 25 } },
+    { name: 'Ветеран',      desc: '+15 к аналитике и скорости', apply: { analytics: 15, speed: 15 } }
+  ];
+
+  var COMMON_SKILLS = ['analytics', 'speed', 'caution'];
+
+  var GOAL_POOL = [
+    { id: 'level50', title: 'Дорасти до 50 уровня', target: 50 },
+    { id: 'courses3', title: 'Пройти 3 курса обучения', target: 3 },
+    { id: 'moles1', title: 'Помочь поймать крота', target: 1 },
+    { id: 'clean12', title: '12 месяцев без дефолтов', target: 12 }
+  ];
+
+  var MANAGER_ACHIEVEMENTS = [
+    { id: 'loans100', name: 'Сто кредитов', desc: '100 одобренных кредитов', target: 100 },
+    { id: 'veteran', name: 'Ветеран', desc: '5 лет в банке', target: 1800 },
+    { id: 'clean', name: 'Без дефолтов', desc: '12 месяцев без дефолтов', target: 12 },
+    { id: 'mentor', name: 'Наставник', desc: '3 курса обучения', target: 3 }
+  ];
+
   var NEW_MANAGER_SEQ = 1;
   var NEW_CANDIDATE_SEQ = 0;
 
@@ -248,6 +294,11 @@
       mbkGiven: { amount: 0, monthsLeft: 0 },
       bonds: []
     },
+
+    /* ---------- Люди: диалоги ---------- */
+    negotiation: null,
+    defaultsThisMonth: 0,
+    prevCapital: null,
 
     /* ---------- Уровни банка ---------- */
     bankStage: 1,
@@ -621,6 +672,165 @@
       return unlocked;
     },
 
+    /* ---------- Характеры, баффы, цели ---------- */
+    characterInfo: function (manager) {
+      return CHARACTERS[manager.character] || CHARACTERS.calm;
+    },
+
+    makeGoal: function () {
+      var g = GOAL_POOL[Math.floor(Math.random() * GOAL_POOL.length)];
+      return {
+        id: g.id,
+        title: g.title,
+        target: g.target,
+        deadlineDay: this.dayNumber + 180,
+        done: false,
+        failed: false
+      };
+    },
+
+    goalProgress: function (manager) {
+      var g = manager.goal;
+      if (!g) return 0;
+
+      if (g.id === 'level50') return manager.level;
+      if (g.id === 'courses3') return manager.courses || 0;
+      if (g.id === 'moles1') return this.stats.molesCaught;
+      if (g.id === 'clean12') return manager.cleanMonths || 0;
+      return 0;
+    },
+
+    rollBuff: function (level) {
+      if (level >= 100) {
+        var legend = LEGENDARY_BUFFS[Math.floor(Math.random() * LEGENDARY_BUFFS.length)];
+        return { kind: 'legendary', name: legend.name, desc: legend.desc, apply: legend.apply };
+      }
+
+      /* 10% на 10-м уровне → 50% на 90-м */
+      var chance = 0.1 + ((level - 10) / 80) * 0.4;
+
+      if (Math.random() < chance) {
+        var rare = RARE_BUFFS[Math.floor(Math.random() * RARE_BUFFS.length)];
+        return { kind: 'rare', name: rare.name, desc: rare.desc, apply: rare.apply };
+      }
+
+      var skill = COMMON_SKILLS[Math.floor(Math.random() * COMMON_SKILLS.length)];
+      var value = 1 + Math.floor(Math.random() * 5);
+      var apply = {};
+      apply[skill] = value;
+
+      var label = skill === 'analytics' ? 'аналитика' : skill === 'speed' ? 'скорость' : 'осторожность';
+      return { kind: 'common', name: 'Практика', desc: '+' + value + ' к ' + label, apply: apply };
+    },
+
+    applyBuff: function (manager, buff) {
+      var a = buff.apply || {};
+      if (a.analytics) manager.skills.analytics = Math.min(100, manager.skills.analytics + a.analytics);
+      if (a.speed) manager.skills.speed = Math.min(100, manager.skills.speed + a.speed);
+      if (a.caution) manager.skills.caution = Math.min(100, manager.skills.caution + a.caution);
+      if (a.loyalty) manager.loyalty = Math.min(100, manager.loyalty + a.loyalty);
+    },
+
+    awardBuffs: function (manager) {
+      var self = this;
+      var granted = [];
+
+      if (!Array.isArray(manager.buffLevels)) manager.buffLevels = [];
+      if (!Array.isArray(manager.buffs)) manager.buffs = [];
+
+      for (var lvl = 10; lvl <= manager.level; lvl += 10) {
+        if (manager.buffLevels.indexOf(lvl) !== -1) continue;
+        manager.buffLevels.push(lvl);
+
+        var buff = this.rollBuff(lvl);
+        buff.level = lvl;
+        manager.buffs.push(buff);
+        this.applyBuff(manager, buff);
+
+        var label = buff.kind === 'legendary' ? 'легендарный' : buff.kind === 'rare' ? 'редкий' : 'обычный';
+        this.log.push({
+          day: this.dayNumber,
+          type: 'growth',
+          text: '✨ ' + manager.name + ' достиг ' + lvl + ' ур. Выпал ' + label + ' бафф: «' + buff.name + '»'
+        });
+        granted.push(buff);
+      }
+
+      return granted;
+    },
+
+    managerAchievementList: function (manager) {
+      var self = this;
+      return MANAGER_ACHIEVEMENTS.map(function (a) {
+        var value = a.id === 'loans100' ? (manager.loans || 0)
+          : a.id === 'veteran' ? (self.dayNumber - (manager.hiredDay || self.dayNumber))
+          : a.id === 'clean' ? (manager.cleanMonths || 0)
+          : (manager.courses || 0);
+
+        return {
+          id: a.id, name: a.name, desc: a.desc, target: a.target,
+          value: Math.min(value, a.target),
+          got: !!(manager.achievements && manager.achievements[a.id])
+        };
+      });
+    },
+
+    checkManagerAchievements: function (manager) {
+      var self = this;
+      var list = this.managerAchievementList(manager);
+
+      list.forEach(function (a) {
+        if (a.got || a.value < a.target) return;
+
+        if (!manager.achievements) manager.achievements = {};
+        manager.achievements[a.id] = true;
+
+        manager.skills.analytics = Math.min(100, manager.skills.analytics + 2);
+        manager.skills.speed = Math.min(100, manager.skills.speed + 2);
+        manager.skills.caution = Math.min(100, manager.skills.caution + 2);
+
+        self.log.push({
+          day: self.dayNumber,
+          type: 'achievement',
+          text: '🏅 ' + manager.name + ' · достижение «' + a.name + '» · навыки +2'
+        });
+      });
+    },
+
+    /* ---------- Диалог о прибавке ---------- */
+    resolveNegotiation: function (action) {
+      var neg = this.negotiation;
+      if (!neg) return { ok: false, error: 'none' };
+
+      var m = this.managerById(neg.managerId);
+      this.negotiation = null;
+      if (!m) return { ok: false, error: 'gone' };
+
+      if (action === 'raise') {
+        m.salary = Math.round((m.salary * 1.15) / 1000) * 1000;
+        m.loyalty = Math.min(100, m.loyalty + 10);
+        this.log.push({ day: this.dayNumber, type: 'growth', text: '📈 ' + m.name + ' получил прибавку · ' + formatMoney(m.salary) + '/мес · лояльность +10' });
+      } else if (action === 'bonus') {
+        var cost = Math.round((m.salary * 0.5) / 1000) * 1000;
+        this.capital -= cost;
+        m.loyalty = Math.min(100, m.loyalty + 5);
+        this.log.push({ day: this.dayNumber, type: 'growth', text: '💸 ' + m.name + ' получил премию ' + formatMoney(cost) + ' · лояльность +5' });
+      } else {
+        m.loyalty = Math.max(0, m.loyalty - 10);
+        var risk = Math.random() < 0.25;
+        if (risk) m.mole = true;
+        this.log.push({
+          day: this.dayNumber,
+          type: 'warn',
+          text: '⚠ ' + m.name + ' получил отказ · лояльность −10' + (risk ? ' · он обиделся и стал кротом' : '')
+        });
+      }
+
+      this.checkCapital();
+      this.save();
+      return { ok: true, manager: m };
+    },
+
     /* ---------- Развитие персонала ---------- */
     trainCost: 100000,
 
@@ -643,6 +853,9 @@
       m.skills.caution = Math.min(100, m.skills.caution + 2);
       m.loyalty = Math.min(100, m.loyalty + 5);
       m.promotedDay = this.dayNumber;
+
+      m.courses = (m.courses || 0) + 1;
+      this.awardBuffs(m);
 
       this.log.push({
         day: this.dayNumber,
@@ -677,6 +890,8 @@
       m.salary = Math.round(m.salary * 1.15 / 1000) * 1000;
       m.loyalty = Math.min(100, m.loyalty + loyaltyGain);
       m.promotedDay = this.dayNumber;
+
+      this.awardBuffs(m);
 
       this.log.push({
         day: this.dayNumber,
@@ -728,10 +943,28 @@
         /* повышение/курсы сбрасывают застой на месяц */
         if (m.promotedDay && self.dayNumber - m.promotedDay < 30) return;
 
+        var market = self.managerMarketSalary(m);
         var drop = 2 + Math.floor(Math.random() * 3);            // 2–4
-        if (m.salary < self.managerMarketSalary(m)) drop += 1;   // низкая зарплата — ещё пункт
+        if (m.salary < market) drop += 1;                        // низкая зарплата — ещё пункт
 
-        m.loyalty = Math.max(0, m.loyalty - drop);
+        var bonus = 0;
+        var character = m.character || 'calm';
+        var monthsSincePromotion = m.promotedDay ? (self.dayNumber - m.promotedDay) / 30 : 99;
+
+        if (character === 'ambitious') {
+          /* ненавидит застой: три месяца без повышения — падение сильнее */
+          if (monthsSincePromotion >= 3) drop += 3;
+        } else if (character === 'materialist') {
+          if (m.salary < market) drop += 2;
+          else if (m.salary > market * 1.1) bonus += 3;
+        } else if (character === 'loyalist') {
+          if (self.defaultsThisMonth > 0) drop += 4;
+          else if (self.prevCapital !== null && self.capital > self.prevCapital) bonus += 1;
+        } else if (character === 'perfectionist') {
+          if (self.defaultsThisMonth > 0) drop += 3;
+        }
+
+        m.loyalty = Math.max(0, Math.min(100, m.loyalty - drop + bonus));
 
         if (m.loyalty < 20) {
           self.log.push({
@@ -987,11 +1220,14 @@
 
       NEW_CANDIDATE_SEQ += 1;
 
+      var chars = Object.keys(CHARACTERS);
+
       return {
         id: 'cand' + NEW_CANDIDATE_SEQ,
         name: CANDIDATE_NAMES[Math.floor(Math.random() * CANDIDATE_NAMES.length)],
         level: level,
         salary: Math.round((30000 + level * 2200) / 1000) * 1000,
+        character: chars[Math.floor(Math.random() * chars.length)],
         skills: {
           analytics: jitter(level),
           speed: jitter(level),
@@ -1030,8 +1266,19 @@
         loyalty: 55,
         salary: cand.salary,
         autopilot: false,
-        progress: 0
+        progress: 0,
+        character: cand.character || 'calm',
+        buffs: [],
+        buffLevels: [],
+        courses: 0,
+        cleanMonths: 0,
+        loans: 0,
+        hiredDay: this.dayNumber,
+        achievements: {},
+        goal: this.makeGoal()
       };
+
+      this.awardBuffs(manager);
 
       this.managers.push(manager);
       this.candidates.splice(idx, 1);
@@ -1177,6 +1424,8 @@
       var expense = 0;
       var defaults = 0;
 
+      this.defaultsThisMonth = 0;
+
       /* ---- кредиты: наш доход ---- */
       this.activeLoans.forEach(function (loan) {
         var interest = loan.amount * (loan.rate / 100) / 12;
@@ -1188,6 +1437,7 @@
         if (loan.risk >= 4 && Math.random() < 0.15) {
           loan.closed = 'default';
           defaults += 1;
+          self.defaultsThisMonth += 1;
           self.log.push({
             day: self.dayNumber,
             type: 'default',
@@ -1310,6 +1560,7 @@
 
         if (bond.type === 'corp' && Math.random() < 0.04) {
           bond.defaulted = true;
+          selfT.defaultsThisMonth += 1;
           selfT.log.push({
             day: selfT.dayNumber,
             type: 'default',
@@ -1342,6 +1593,58 @@
       /* люди: застой, кроты, проверки СБ */
       this.applyLoyaltyDecay();
       this.processMoles();
+
+      /* личные цели менеджеров */
+      this.managers.forEach(function (m) {
+        if (m.cleanMonths === undefined) m.cleanMonths = 0;
+        if (self.defaultsThisMonth === 0) m.cleanMonths += 1;
+
+        self.checkManagerAchievements(m);
+
+        var goal = m.goal;
+        if (!goal || goal.done || goal.failed) return;
+
+        if (self.goalProgress(m) >= goal.target) {
+          goal.done = true;
+          m.loyalty = Math.min(100, m.loyalty + 20);
+
+          var premium = m.salary;
+          self.capital -= premium;
+
+          self.log.push({
+            day: self.dayNumber,
+            type: 'growth',
+            text: '🎯 ' + m.name + ' выполнил цель «' + goal.title + '» · +20 лояльности, премия ' + formatMoney(premium)
+          });
+        } else if (self.dayNumber >= goal.deadlineDay) {
+          goal.failed = true;
+          m.loyalty = Math.max(0, m.loyalty - 15);
+
+          self.log.push({
+            day: self.dayNumber,
+            type: 'warn',
+            text: '⏳ ' + m.name + ' провалил цель «' + goal.title + '» · лояльность −15'
+          });
+        }
+      });
+
+      /* просьба о прибавке */
+      if (!this.negotiation) {
+        for (var ni = 0; ni < this.managers.length; ni += 1) {
+          var nm = this.managers[ni];
+          if (!nm.mole && nm.loyalty < 40) {
+            this.negotiation = { managerId: nm.id, day: this.dayNumber };
+            this.log.push({
+              day: this.dayNumber,
+              type: 'warn',
+              text: '💬 ' + nm.name + ' просит прибавку · лояльность ' + nm.loyalty
+            });
+            break;
+          }
+        }
+      }
+
+      this.prevCapital = this.capital;
 
       /* сводка по переманенным клиентам */
       this.competitors.forEach(function (c) {
@@ -1486,6 +1789,8 @@
 
       var result = approve ? this.approveClient(client.id) : this.declineClient(client.id);
       if (!result || !result.ok) return null;
+
+      if (approve && client.type === 'loan') manager.loans = (manager.loans || 0) + 1;
 
       client.decidedBy = manager.name;
       client.decision = approve ? 'approved' : 'declined';
@@ -1644,6 +1949,9 @@
           loans: this.activeLoans,
           deposits: this.activeDeposits,
           reputation: this.reputation,
+          negotiation: this.negotiation,
+          defaultsThisMonth: this.defaultsThisMonth,
+          prevCapital: this.prevCapital,
           ratesLog: this.ratesLog,
           fxSpread: this.fxSpread,
           currencies: this.currencies,
@@ -1714,6 +2022,9 @@
         if (typeof data.playerLoanRate === 'number') this.playerLoanRate = data.playerLoanRate;
         if (typeof data.playerDepositRate === 'number') this.playerDepositRate = data.playerDepositRate;
         if (Array.isArray(data.competitors) && data.competitors.length) this.competitors = data.competitors;
+        if (data.negotiation) this.negotiation = data.negotiation;
+        if (typeof data.defaultsThisMonth === 'number') this.defaultsThisMonth = data.defaultsThisMonth;
+        if (typeof data.prevCapital === 'number') this.prevCapital = data.prevCapital;
         if (Array.isArray(data.ratesLog)) this.ratesLog = data.ratesLog;
         if (typeof data.fxSpread === 'number') this.fxSpread = data.fxSpread;
         if (data.currencies) this.currencies = data.currencies;

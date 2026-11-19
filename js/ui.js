@@ -253,6 +253,112 @@
     '</div>';
   }
 
+  function goalCardHtml(m) {
+    var goal = m.goal;
+    if (!goal) return '';
+
+    var progress = state.goalProgress(m);
+    var percent = Math.max(0, Math.min(100, (progress / goal.target) * 100));
+    var daysLeft = Math.max(0, goal.deadlineDay - state.dayNumber);
+
+    var status = goal.done
+      ? '<span class="badge badge-mint">выполнена</span>'
+      : goal.failed
+        ? '<span class="badge badge-coral">провалена</span>'
+        : '<span class="badge badge-muted">в работе</span>';
+
+    return '<section class="card">' +
+      '<div class="card-h"><h2>Личная цель</h2><div class="r">' + status + '</div></div>' +
+      '<div class="card-b">' +
+        '<div class="goal-title">' + goal.title + '</div>' +
+        '<div class="ach-bar"><div class="track"><i style="width:' + (goal.done ? 100 : percent) + '%"></i></div>' +
+          '<span class="small muted num">' + Math.min(progress, goal.target) + ' / ' + goal.target + '</span></div>' +
+        '<div class="small muted" style="margin-top:6px">' +
+          (goal.done ? 'Награда получена: +20 лояльности и премия'
+            : goal.failed ? 'Дедлайн прошёл: −15 лояльности'
+            : 'Дедлайн через ' + daysLeft + ' дн. · награда: +20 лояльности и премия') +
+        '</div>' +
+      '</div>' +
+    '</section>';
+  }
+
+  function buffsCardHtml(m) {
+    var buffs = m.buffs || [];
+
+    var rows = buffs.length
+      ? buffs.slice().sort(function (a, b) { return a.level - b.level; }).map(function (b) {
+          var tone = b.kind === 'legendary' ? 'badge-gold' : b.kind === 'rare' ? 'badge-violet' : 'badge-muted';
+          var label = b.kind === 'legendary' ? 'легендарный' : b.kind === 'rare' ? 'редкий' : 'обычный';
+
+          return '<div class="buff-row">' +
+            '<span class="buff-lvl num">Ур. ' + b.level + '</span>' +
+            '<span class="badge ' + tone + '">' + label + '</span>' +
+            '<b class="buff-name">«' + b.name + '»</b>' +
+            '<span class="small muted">' + b.desc + '</span>' +
+          '</div>';
+        }).join('')
+      : '<div class="muted small">Баффов пока нет — они выпадают на каждом 10-м уровне.</div>';
+
+    return '<section class="card">' +
+      '<div class="card-h"><h2>Баффы</h2><div class="r">' + buffs.length + ' шт</div></div>' +
+      '<div class="card-b">' + rows + '</div>' +
+    '</section>';
+  }
+
+  function achievementsCardHtml(m) {
+    var list = state.managerAchievementList(m);
+    var got = list.filter(function (a) { return a.got; }).length;
+
+    var rows = list.map(function (a) {
+      var percent = a.got ? 100 : Math.max(0, Math.min(100, (a.value / a.target) * 100));
+
+      return '<div class="ach-line' + (a.got ? ' is-got' : '') + '">' +
+        '<span class="ach-line-ico">' + (a.got ? '🏅' : '🔒') + '</span>' +
+        '<div class="ach-line-body">' +
+          '<div class="between"><b>' + (a.got ? a.name : '???') + '</b>' +
+            '<span class="small muted num">' + (a.got ? 'получено' : a.value + ' / ' + a.target) + '</span></div>' +
+          '<div class="small muted">' + a.desc + '</div>' +
+          '<div class="track" style="height:4px;margin-top:6px"><i style="width:' + percent + '%"></i></div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return '<section class="card">' +
+      '<div class="card-h"><h2>Достижения</h2><div class="r">' + got + ' / ' + list.length + '</div></div>' +
+      '<div class="card-b">' + rows + '</div>' +
+    '</section>';
+  }
+
+  /* ---------- Диалог о прибавке ---------- */
+  function renderNegotiation() {
+    var box = document.querySelector('[data-ui="negotiation"]');
+    if (!box) return;
+
+    var neg = state.negotiation;
+    var manager = neg ? state.managerById(neg.managerId) : null;
+
+    if (!neg || !manager) {
+      box.hidden = true;
+      box.innerHTML = '';
+      return;
+    }
+
+    box.hidden = false;
+    box.innerHTML = '<section class="card negotiation">' +
+      '<div class="card-h"><h2>Требует решения</h2><div class="r">' + manager.name + '</div></div>' +
+      '<div class="card-b">' +
+        '<p class="neg-text">«Я работаю здесь уже давно, а зарплата ниже рынка. Могу я рассчитывать на прибавку?»</p>' +
+        '<div class="neg-meta small muted">лояльность ' + manager.loyalty + ' · ' +
+          money(manager.salary) + '/мес · рынок ' + money(state.managerMarketSalary(manager)) + '</div>' +
+        '<div class="neg-actions">' +
+          '<button class="btn btn-sm btn-primary" type="button" data-neg="raise">Повысить зарплату · +10</button>' +
+          '<button class="btn btn-sm" type="button" data-neg="bonus">Премия ' + money(manager.salary * 0.5) + ' · +5</button>' +
+          '<button class="btn btn-sm btn-no" type="button" data-neg="refuse">Отказать · −10</button>' +
+        '</div>' +
+      '</div>' +
+    '</section>';
+  }
+
   function renderManager() {
     var card = document.querySelector('[data-ui="manager-card"]');
     if (!card) return;
@@ -268,7 +374,9 @@
     var signature = [m.id, m.level, m.loyalty, m.autopilot, m.salary,
                      m.skills.analytics, m.skills.speed, m.skills.caution,
                      state.managers.length, Math.round(state.capital), m.mole ? 1 : 0,
-                     m.promotedDay || 0].join('|');
+                     m.promotedDay || 0, m.character || '', (m.buffs || []).length,
+                     m.goal ? (m.goal.done ? 'd' : m.goal.failed ? 'f' : String(state.goalProgress(m))) : '',
+                     m.courses || 0, m.cleanMonths || 0].join('|');
     if (signature === last.manager) return;
     last.manager = signature;
 
@@ -311,6 +419,8 @@
             '<div class="tagrow">' +
               '<span class="badge badge-gold">' + loyaltyLabel(m.loyalty) + ' · ' + m.loyalty + '</span>' +
               '<span class="badge badge-muted">шанс ошибки ' + mistake + '%</span>' +
+              '<span class="badge badge-muted" title="' + state.characterInfo(m).hint + '">' +
+                state.characterInfo(m).name + '</span>' +
               (m.mole
                 ? '<span class="badge badge-coral">крот</span>'
                 : '<span class="badge badge-mint">чист</span>') +
@@ -351,6 +461,9 @@
         '</div></div>' +
       '</section>' +
 
+      goalCardHtml(m) +
+      buffsCardHtml(m) +
+      achievementsCardHtml(m) +
       '<section class="card">' +
         '<div class="card-h"><h2>Лояльность</h2><div class="r">' + m.loyalty + ' · ' + loyaltyLabel(m.loyalty) + '</div></div>' +
         '<div class="card-b">' +
@@ -1303,6 +1416,7 @@
     renderStocks();
     renderSecurity();
     renderAchievements();
+    renderNegotiation();
 
     /* всплывающие достижения */
     if (state.pendingToasts && state.pendingToasts.length && typeof global.showToast === 'function') {
@@ -1533,6 +1647,25 @@
     });
   }
 
+  function bindNegotiation() {
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-neg]');
+      if (!btn) return;
+
+      var res = state.resolveNegotiation(btn.dataset.neg);
+      if (!res.ok) return;
+
+      if (typeof global.showToast === 'function') {
+        var action = btn.dataset.neg;
+        global.showToast(action === 'raise' ? 'Зарплата повышена'
+          : action === 'bonus' ? 'Премия выдана'
+          : 'Отказано');
+      }
+      last.manager = null;
+      render();
+    });
+  }
+
   function bindStage() {
     document.addEventListener('click', function (event) {
       var btn = event.target.closest && event.target.closest('[data-stage-up]');
@@ -1634,6 +1767,7 @@
     bindStocks();
     bindSecurity();
     bindStage();
+    bindNegotiation();
     render();
     syncControls();
   }
