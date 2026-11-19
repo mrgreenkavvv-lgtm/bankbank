@@ -101,7 +101,7 @@
     startDayNumber: 41,
     dayNumber: 41,
     elapsedDays: 0,
-    dayLength: 60,
+    dayLength: 30,
     speed: 1,
     paused: false,
 
@@ -294,7 +294,8 @@
     /* ---------- Филиалы ---------- */
     branches: 1,
     branchCost: 5000000,
-    clientsPerDay: 0.25,
+    clientsPerDay: 0.3,
+    flowBonus: 0,
     clientAcc: 0,
 
     /* ---------- Казначейство: ставки ---------- */
@@ -867,6 +868,12 @@
       };
     },
 
+    /* поток клиентов: (0,25 + 2 за филиал + бонусы) × 1,2 */
+    recalcFlow: function () {
+      var base = 0.25 + 2 * Math.max(0, this.branches - 1) + (this.flowBonus || 0);
+      this.clientsPerDay = Math.round(base * 1.2 * 100) / 100;
+    },
+
     /* ---------- Найм ---------- */
     candidates: [],
 
@@ -1106,7 +1113,8 @@
         comp.status = 'subsidiary';
         this.capital += comp.capital;
         this.queueLimit += 10;
-        this.clientsPerDay += 1;
+        this.flowBonus = (this.flowBonus || 0) + 1;
+        this.recalcFlow();
         this.log.push({
           day: this.dayNumber,
           type: 'stock',
@@ -1131,7 +1139,7 @@
       this.capital -= this.branchCost;
       this.branches += 1;
       this.queueLimit += 10;
-      this.clientsPerDay += 2;
+      this.recalcFlow();
 
       this.log.push({
         day: this.dayNumber,
@@ -1381,7 +1389,8 @@
       this.pushRatesHistory();
 
       /* поток зависит от числа филиалов */
-      this.clientAcc += this.clientsPerDay;
+      /* округляем накопитель, иначе 0,3 × 30 даёт 8,999… и клиент теряется */
+      this.clientAcc = Math.round((this.clientAcc + this.clientsPerDay) * 10000) / 10000;
       while (this.clientAcc >= 1) {
         this.clientAcc -= 1;
         var client = this.spawnClient();
@@ -1627,6 +1636,7 @@
           branches: this.branches,
           queueLimit: this.queueLimit,
           clientsPerDay: this.clientsPerDay,
+          flowBonus: this.flowBonus,
           clientAcc: this.clientAcc,
           candidates: this.candidates,
           managerSeq: NEW_MANAGER_SEQ,
@@ -1692,7 +1702,8 @@
         }
         if (Number(data.branches)) this.branches = Number(data.branches);
         if (Number(data.queueLimit)) this.queueLimit = Number(data.queueLimit);
-        if (typeof data.clientsPerDay === 'number') this.clientsPerDay = data.clientsPerDay;
+        if (typeof data.flowBonus === 'number') this.flowBonus = data.flowBonus;
+        this.recalcFlow();
         if (typeof data.clientAcc === 'number') this.clientAcc = data.clientAcc;
         if (Array.isArray(data.candidates)) this.candidates = data.candidates;
         NEW_MANAGER_SEQ = Number(data.managerSeq) || this.managers.length;
