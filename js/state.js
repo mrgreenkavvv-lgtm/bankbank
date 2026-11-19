@@ -2425,8 +2425,20 @@
               m.potential = m.potential || 'medium';
               m.potentialMax = 75;
             }
-            if (!m.buffBonus) m.buffBonus = { analytics: 0, speed: 0, caution: 0 };
             if (!m.workMode) m.workMode = 'all';
+
+            /* баффы — единственный источник бонуса: всегда пересчитываем из истории.
+               Так старые сейвы, где баффы выпадали до разделения base/buffBonus,
+               тоже показывают реальные цифры. */
+            if (!Array.isArray(m.buffs)) m.buffs = [];
+            var bonus = { analytics: 0, speed: 0, caution: 0 };
+            m.buffs.forEach(function (b) {
+              var a = (b && b.apply) || {};
+              if (a.analytics) bonus.analytics += a.analytics;
+              if (a.speed) bonus.speed += a.speed;
+              if (a.caution) bonus.caution += a.caution;
+            });
+            m.buffBonus = bonus;
           });
         }
         if (Number(data.branches)) this.branches = Number(data.branches);
