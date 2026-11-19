@@ -1,0 +1,96 @@
+/* ==========================================================================
+   Симулятор банка · ТОКЕНЫ
+   Единственный источник цветов, шрифтов, отступов и радиусов.
+   Компоненты используют только var(--*), магических значений не держим.
+   ========================================================================== */
+
+:root {
+  /* ---------- Поверхности ---------- */
+  --canvas:        #0A0E13;
+  --surface:       #0F151C;
+  --card:          #141C25;
+  --raised:        #1B2530;
+  --border:        #223040;
+  --border-strong: #31455A;
+
+  /* ---------- Текст ---------- */
+  --text:   #E9EEF4;
+  --text-2: #9BABBC;
+  --text-3: #7C8FA3;
+
+  /* ---------- Семантика ---------- */
+  --gold:  #C8A04A;
+  --gold-soft: #E3C07E;
+  --mint:  #3DDC97;
+  --coral: #FF5A5F;
+  --amber: #FFB547;
+  --blue:  #4DA3FF;
+  --violet:#9B8CFF;
+
+  --gold-dim:   rgba(200, 160, 74, .14);
+  --mint-dim:   rgba(61, 220, 151, .13);
+  --coral-dim:  rgba(255, 90, 95, .13);
+  --amber-dim:  rgba(255, 181, 71, .13);
+  --blue-dim:   rgba(77, 163, 255, .13);
+  --violet-dim: rgba(155, 140, 255, .13);
+
+  /* ---------- Акцент уровня банка ---------- */
+  --stage:       var(--gold);
+  --stage-dim:   var(--gold-dim);
+
+  /* ---------- Типографика ---------- */
+  --font-ui:      "Golos Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Unbounded", "Golos Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+
+  --fs-9:  9px;
+  --fs-10: 10px;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-15: 15px;
+  --fs-17: 17px;
+  --fs-19: 19px;
+  --fs-24: 24px;
+  --fs-28: 28px;
+
+  --lh-tight: 1.2;
+  --lh-base:  1.45;
+
+  /* ---------- Отступы (шаг 4px) ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  --gap:      14px;
+  --page-pad: 18px;
+
+  /* ---------- Радиусы ---------- */
+  --r-s:    8px;
+  --r-m:    10px;
+  --r-l:    14px;
+  --r-pill: 999px;
+
+  /* ---------- Каркас ---------- */
+  --hud-h:  60px;
+  --rail-w: 236px;
+  --rail-w-collapsed: 72px;
+  --tabbar-h: 62px;
+  --statusbar-h: 44px;
+
+  /* ---------- Тени и движение ---------- */
+  --shadow-card: none;
+  --shadow-pop:  0 16px 40px rgba(0, 0, 0, .55);
+  --shadow-fab:  0 10px 24px rgba(0, 0, 0, .45);
+  --dur:     .16s;
+  --ease:    cubic-bezier(.2, .7, .3, 1);
+
+  /* ---------- Прочее ---------- */
+  --tap: 44px; /* минимальная зона нажатия */
+}

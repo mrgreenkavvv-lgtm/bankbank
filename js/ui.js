@@ -1,0 +1,1380 @@
+/* ==========================================================================
+   ui.js · Связка состояния и DOM
+   Только чтение GameState и запись в узлы с data-ui. Обновляем изменившееся.
+   ========================================================================== */
+(function (global) {
+  'use strict';
+
+  var state = global.GameState;
+  var els = { capital: [], flow: null, vip: null, queue: null, bankrupt: null, events: null };
+  var last = {
+    capital: null, date: null, dayline: null, stage: null, kpi: null, delta: null,
+    liquid: null, flow: null, vip: null, queue: null, counts: null, events: null, bankrupt: null,
+    manager: null, 'ap-name': null, 'ap-eta': null,
+    portfolio: null, profit: null, profitNote: null, rep: null, ratios: null,
+    branches: null, kpiBranches: null, branchesPanel: null,
+    rates: null, stocks: null, stocksSub: null, stocksCount: null, myLoan: null, myDep: null,
+    security: null
+  };
+
+  function money(value) {
+    return global.formatMoney(value);
+  }
+
+  function setText(node, value, key) {
+    if (!node || last[key] === value) return;
+    node.textContent = value;
+    last[key] = value;
+  }
+
+  function riskDots(risk) {
+    var html = '<span class="risk' + (risk >= 4 ? ' is-high' : '') + '">';
+    for (var i = 0; i < 5; i += 1) {
+      html += '<i' + (i < risk ? ' class="f"' : '') + '></i>';
+    }
+    return html + '</span>';
+  }
+
+  function rateLabel(rate) {
+    return rate.toFixed(2).replace('.', ',') + '%';
+  }
+
+  /* ---------- Дельта капитала от старта ---------- */
+  function renderDelta() {
+    var pct = ((state.capital - state.startCapital) / state.startCapital) * 100;
+    var flat = Math.abs(pct) < 0.05;
+    var up = pct > 0;
+    var sign = flat ? '' : (up ? '▲ +' : '▼ −');
+    var body = Math.abs(pct).toFixed(1).replace('.', ',') + '%';
+    var cls = flat ? 'num muted' : (up ? 'num up' : 'num down');
+    var value = sign + body;
+
+    if (last.delta !== cls + value) {
+      last.delta = cls + value;
+
+      document.querySelectorAll('[data-ui="cap-delta"]').forEach(function (node) {
+        node.className = 'tiny ' + cls;
+        node.textContent = value;
+      });
+      document.querySelectorAll('[data-ui="kpi-delta"]').forEach(function (node) {
+        node.className = 'd ' + (flat ? 'muted' : (up ? 'up' : 'down'));
+        node.textContent = value + ' от старта';
+      });
+    }
+  }
+
+  /* ---------- Свободные средства ---------- */
+  function renderLiquid() {
+    var liquid = money(state.liquidFunds());
+
+    setText(document.querySelector('[data-ui="liquid"]'), liquid, 'liquid');
+    setText(document.querySelector('[data-ui="liquid-line"]'), 'Свободно: ' + liquid, 'liquid-line');
+  }
+
+  /* ---------- Живой поток ---------- */
+  function renderFlow() {
+    if (!els.flow) return;
+
+    var clients = state.activeClients || [];
+    /* отмечаем и id, и автора решения: бейдж должен появляться сразу */
+    var signature = clients.map(function (c) { return c.id + (c.decidedBy ? ':' + c.decidedBy : ''); }).join('|');
+    if (signature === last.flow) return;
+    last.flow = signature;
+
+    els.flow.innerHTML = clients.map(function (c) {
+      var hot = c.amount >= 3000000 ? ' is-warn' : '';
+      return '' +
+        '<div class="frow">' +
+          '<span class="t">д. ' + c.day + '</span>' +
+          '<span class="dot' + hot + '"></span>' +
+          '<span class="nm">' + c.name + '</span>' +
+          '<span class="' + (c.decidedBy ? 'muted' : 'muted') + '">' +
+            (c.decidedBy ? '✓ ' + c.decidedBy : state.typeLabel(c.type)) + '</span>' +
+          '<span class="amt">' + money(c.amount) + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ---------- «Требует решения»: только VIP ---------- */
+  function renderVip() {
+    if (!els.vip) return;
+
+    var vips = state.queue.filter(function (c) { return c.isVip; }).slice(0, 3);
+    var signature = vips.map(function (c) { return c.id; }).join('|');
+    if (signature === last.vip) return;
+    last.vip = signature;
+
+    if (!vips.length) {
+      els.vip.innerHTML =
+        '<div class="qitem">' +
+          '<span class="badge badge-muted">—</span>' +
+          '<div><div class="qname">Срочных решений нет</div>' +
+          '<div class="qmeta">VIP-заявки появятся по мере потока</div></div>' +
+        '</div>';
+      return;
+    }
+
+    els.vip.innerHTML = vips.map(function (c) {
+      return '<a class="qitem" href="clients.html">' +
+        '<span class="badge badge-gold">VIP</span>' +
+        '<div>' +
+          '<div class="qname">' + (c.type === 'loan' ? 'Кредит' : 'Вклад') + ' · ' + c.name + '</div>' +
+          '<div class="qmeta">' + c.term + ' мес · риск ' + state.riskLabel(c.risk) + ' · ' + rateLabel(c.rate) + '</div>' +
+        '</div>' +
+        '<span class="qsum">' + money(c.amount) + '</span>' +
+      '</a>';
+    }).join('');
+  }
+
+  /* ---------- Очередь заявок ---------- */
+  function renderQueue() {
+    if (!els.queue) return;
+
+    var list = state.queue;
+    var signature = list.map(function (c) { return c.id; }).join('|');
+    if (signature === last.queue) return;
+    last.queue = signature;
+
+    if (!list.length) {
+      els.queue.innerHTML =
+        '<li class="req" style="grid-template-columns:1fr">' +
+          '<div class="req-name"><span class="muted">Очередь пуста — ждём новых клиентов</span></div>' +
+        '</li>';
+      return;
+    }
+
+    els.queue.innerHTML = list.map(function (c) {
+      var vip = c.isVip ? ' is-vip' : '';
+      return '<li class="req' + vip + '" data-client-id="' + c.id + '" data-type="' + c.type + '" data-amount="' + c.amount + '">' +
+        '<div class="req-name"><span>' + c.name + '</span>' +
+          (c.isVip ? '<span class="badge badge-gold">VIP</span>' : '') +
+        '</div>' +
+        '<div class="req-meta">' +
+          '<span class="chip req-type' + (c.type === 'deposit' ? ' chip-blue' : '') + '">' + state.typeLabel(c.type) + '</span>' +
+          '<span class="req-term">' + c.term + ' мес</span>' +
+          '<span class="req-risk">' + riskDots(c.risk) + '</span>' +
+          '<span class="req-rate">' + rateLabel(c.rate) + '</span>' +
+        '</div>' +
+        '<div class="req-amount">' + money(c.amount) + '</div>' +
+        '<div class="req-manager muted">' + c.manager + '</div>' +
+        '<div class="req-actions">' +
+          '<button class="btn btn-ok btn-sm" type="button" data-decide="approved">✓ Одобрить</button>' +
+          '<button class="btn btn-no btn-sm" type="button" data-decide="declined">✕ Отказ</button>' +
+        '</div>' +
+      '</li>';
+    }).join('');
+  }
+
+  /* ---------- Доступность кнопки «Одобрить» ---------- */
+  function refreshAffordability() {
+    var liquid = state.liquidFunds();
+
+    document.querySelectorAll('[data-ui="queue"] .req[data-client-id]').forEach(function (row) {
+      var btn = row.querySelector('[data-decide="approved"]');
+      if (!btn) return;
+
+      var isLoan = row.dataset.type === 'loan';
+      var amount = Number(row.dataset.amount) || 0;
+      var can = !isLoan || liquid >= amount;
+
+      if (btn.disabled === !can) return;
+      btn.disabled = !can;
+      btn.title = can ? '' : 'Недостаточно средств';
+    });
+  }
+
+  /* ---------- Счётчики ---------- */
+  function renderCounts() {
+    var n = state.queue.length;
+    if (last.counts === String(n)) return;
+    last.counts = String(n);
+
+    document.querySelectorAll('[data-ui="queue-num"]').forEach(function (el) { el.textContent = n; });
+    document.querySelectorAll('[data-ui="queue-count"]').forEach(function (el) { el.textContent = n + ' ждут'; });
+    document.querySelectorAll('[data-ui="resolve-btn"]').forEach(function (el) { el.textContent = 'Решить · ' + n; });
+    document.querySelectorAll('[data-ui="queue-badge"]').forEach(function (el) { el.textContent = n + ' у вас'; });
+    document.querySelectorAll('[data-ui="queue-chip"]').forEach(function (el) { el.textContent = '⚠ ' + n; });
+  }
+
+  /* ---------- События ---------- */
+  function renderEvents() {
+    if (!els.events) return;
+
+    var entries = state.log.slice(-5).reverse();
+    var signature = entries.map(function (e) { return e.day + e.text; }).join('|');
+    if (signature === last.events) return;
+    last.events = signature;
+
+    if (!entries.length) {
+      els.events.innerHTML = '<div class="nitem"><span class="t">—</span><p class="muted">Пока тихо</p></div>';
+      return;
+    }
+
+    els.events.innerHTML = entries.map(function (e) {
+      var colors = {
+        bankrupt: 'var(--coral)', warn: 'var(--coral)', default: 'var(--coral)', fire: 'var(--coral)',
+        closed: 'var(--mint)', growth: 'var(--mint)', stock: 'var(--mint)', branch: 'var(--mint)',
+        hire: 'var(--mint)', security: 'var(--mint)', achievement: 'var(--mint)', stage: 'var(--mint)',
+        cbr: 'var(--amber)'
+      };
+      var cls = colors[e.type] ? ' style="color:' + colors[e.type] + '"' : '';
+      return '<div class="nitem"><span class="t">д. ' + e.day + '</span><p' + cls + '>' + e.text + '</p></div>';
+    }).join('');
+  }
+
+  /* ---------- Неплатёжеспособность ---------- */
+  function renderBankrupt() {
+    var bar = els.bankrupt;
+    var message = state.bankrupt ? '1' : '0';
+    if (last.bankrupt === message) return;
+    last.bankrupt = message;
+
+    if (bar) bar.hidden = !state.bankrupt;
+    document.body.classList.toggle('is-bankrupt', state.bankrupt);
+  }
+
+  /* ---------- Менеджеры ---------- */
+  function initials(name) {
+    return name.split(' ').map(function (w) { return w.charAt(0); }).slice(0, 2).join('').toUpperCase();
+  }
+
+  function loyaltyLabel(value) {
+    if (value >= 80) return 'преданный';
+    if (value >= 50) return 'лояльный';
+    if (value >= 20) return 'недовольный';
+    return 'на грани';
+  }
+
+  function skillRow(name, value) {
+    return '<div class="skill">' +
+      '<span class="skill-name">' + name + '</span>' +
+      '<span class="skill-bar"><i style="width:' + value + '%"></i></span>' +
+      '<span class="skill-val">' + value + '</span>' +
+    '</div>';
+  }
+
+  function renderManager() {
+    var card = document.querySelector('[data-ui="manager-card"]');
+    if (!card) return;
+
+    var m = state.managerById(state.activeManagerId);
+    if (!m) return;
+
+    var market = Math.round((30000 + m.level * 2600) / 1000) * 1000;
+    var diff = Math.round(((m.salary - market) / market) * 100);
+    var perDay = (1 / state.managerDaysPerClient(m)).toFixed(2).replace('.', ',');
+    var mistake = Math.round(state.managerMistakeChance(m) * 100);
+
+    var signature = [m.id, m.level, m.loyalty, m.autopilot, m.salary,
+                     m.skills.analytics, m.skills.speed, m.skills.caution,
+                     state.managers.length, Math.round(state.capital), m.mole ? 1 : 0,
+                     m.promotedDay || 0].join('|');
+    if (signature === last.manager) return;
+    last.manager = signature;
+
+    var list = document.querySelector('[data-ui="managers"]');
+    if (list) {
+      list.innerHTML = state.managers.map(function (x) {
+        var on = x.id === state.activeManagerId ? ' is-on' : '';
+        return '<button class="chip' + on + '" type="button" data-manager="' + x.id + '">' +
+               x.name + ' · ' + x.level + '</button>';
+      }).join('');
+    }
+
+    var trainBtn = document.querySelector('[data-train]');
+    var promoteBtn = document.querySelector('[data-promote]');
+    var maxed = m.level >= 100;
+
+    if (trainBtn) {
+      trainBtn.disabled = maxed || state.capital < state.trainCost;
+      trainBtn.title = maxed ? 'Максимальный уровень' : (state.capital < state.trainCost ? 'Не хватает денег' : '');
+    }
+    if (promoteBtn) {
+      var cost = state.promoteCost(m);
+      promoteBtn.disabled = maxed || state.capital < cost;
+      promoteBtn.title = maxed ? 'Максимальный уровень' : (state.capital < cost ? 'Не хватает денег' : '');
+    }
+
+    var costTrain = document.querySelector('[data-ui="cost-train"]');
+    if (costTrain) costTrain.textContent = money(state.trainCost);
+
+    var costPromote = document.querySelector('[data-ui="cost-promote"]');
+    if (costPromote) costPromote.textContent = money(state.promoteCost(m));
+
+    card.innerHTML = '' +
+      '<section class="card">' +
+        '<div class="profile">' +
+          '<div class="ava" style="--p:' + m.level + '"><b>' + initials(m.name) + '</b></div>' +
+          '<div>' +
+            '<div class="p-name">' + m.name + '</div>' +
+            '<div class="p-meta">уровень ' + m.level + ' · операционист</div>' +
+            '<div class="tagrow">' +
+              '<span class="badge badge-gold">' + loyaltyLabel(m.loyalty) + ' · ' + m.loyalty + '</span>' +
+              '<span class="badge badge-muted">шанс ошибки ' + mistake + '%</span>' +
+              (m.mole
+                ? '<span class="badge badge-coral">крот</span>'
+                : '<span class="badge badge-mint">чист</span>') +
+            '</div>' +
+          '</div>' +
+          '<div class="p-level"><span>Уровень</span><b>' + m.level + '<i>/100</i></b></div>' +
+        '</div>' +
+
+        '<div class="salary">' +
+          '<b>' + money(m.salary) + '/мес</b>' +
+          '<span>· рынок ' + money(market) + '</span>' +
+          '<span class="' + (diff < 0 ? 'down' : 'up') + '">· ' +
+            (diff < 0 ? 'ниже' : 'выше') + ' рынка на ' + Math.abs(diff) + '%</span>' +
+        '</div>' +
+
+        '<div class="autopilot-box">' +
+          '<div class="ap-txt">' +
+            '<b>Автопилот</b>' +
+            '<span>' + (m.autopilot ? 'Включён — разбирает очередь сам' : 'Выключен — очередь разбираете вы') + '</span>' +
+          '</div>' +
+          '<label class="switch">' +
+            '<input type="checkbox" data-autopilot="' + m.id + '"' + (m.autopilot ? ' checked' : '') +
+              ' aria-label="Автопилот">' +
+            '<span class="track-ui"></span>' +
+          '</label>' +
+        '</div>' +
+        (m.autopilot
+          ? '<div class="ap-hint">Разбирает очередь со скоростью ~' + perDay + ' клиента/день · VIP оставляет вам</div>'
+          : '') +
+      '</section>' +
+
+      '<section class="card">' +
+        '<div class="card-h"><h2>Навыки</h2><div class="r">1–100</div></div>' +
+        '<div class="card-b"><div class="skills">' +
+          skillRow('Аналитика', m.skills.analytics) +
+          skillRow('Скорость', m.skills.speed) +
+          skillRow('Осторожность', m.skills.caution) +
+        '</div></div>' +
+      '</section>' +
+
+      '<section class="card">' +
+        '<div class="card-h"><h2>Лояльность</h2><div class="r">' + m.loyalty + ' · ' + loyaltyLabel(m.loyalty) + '</div></div>' +
+        '<div class="card-b">' +
+          '<div class="track" style="height:9px"><i class="is-gold" style="width:' + m.loyalty + '%"></i></div>' +
+          '<div class="between small muted" style="margin-top:6px">' +
+            '<span>порог ухода 20</span><span>шанс ухода скрыт</span>' +
+          '</div>' +
+          '<div class="hr"></div>' +
+          '<button class="btn btn-no btn-sm" type="button" data-fire="' + m.id + '">Уволить · пособие ' + money(m.salary) + '</button>' +
+        '</div>' +
+      '</section>' +
+      renderCandidates();
+  }
+
+  /* ---------- Кандидаты ---------- */
+  function renderCandidates() {
+    var list = state.ensureCandidates();
+    var canPay = state.capital;
+
+    var rows = list.map(function (c) {
+      var affordable = canPay >= c.salary;
+      return '<div class="cand">' +
+        '<div class="cand-top"><b>' + c.name + '</b><span class="badge badge-muted">ур. ' + c.level + '</span></div>' +
+        '<div class="cand-skills">' +
+          '<span>аналитика ' + c.skills.analytics + '</span>' +
+          '<span>скорость ' + c.skills.speed + '</span>' +
+          '<span>осторожность ' + c.skills.caution + '</span>' +
+        '</div>' +
+        '<div class="cand-foot">' +
+          '<span class="num">' + money(c.salary) + '/мес</span>' +
+          '<button class="btn btn-sm ' + (affordable ? 'btn-primary' : '') + '" type="button" data-hire="' + c.id + '"' +
+            (affordable ? '' : ' disabled title="Не хватает денег на первый месяц"') + '>Нанять</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return '<section class="card">' +
+      '<div class="card-h"><h2>Найм</h2><div class="r">' +
+        '<button class="btn btn-sm btn-ghost" type="button" data-reroll>Другие</button>' +
+      '</div></div>' +
+      '<div class="cand-list">' + rows + '</div>' +
+      '<div class="card-f">При найме сразу списывается первый месяц · на вас ' + state.managers.length + ' из ' + state.branches + ' филиалов</div>' +
+    '</section>';
+  }
+
+  /* ---------- Филиалы ---------- */
+  function renderBranches() {
+    var hud = document.querySelector('[data-ui="branches"]');
+    if (hud) setText(hud, String(state.branches), 'branches');
+
+    var kpi = document.querySelector('[data-ui="kpi-branches"]');
+    if (kpi) setText(kpi, String(state.branches), 'kpiBranches');
+
+    var sub = document.querySelector('[data-ui="branch-sub"]');
+    if (sub) {
+      setText(sub, state.branches + (state.branches === 1 ? ' филиал' : ' филиала') +
+        ' · очередь до ' + state.queueLimit, 'branchSub');
+    }
+
+    var box = document.querySelector('[data-ui="branches-panel"]');
+    if (!box) return;
+
+    var sig = [state.branches, state.queueLimit, state.clientsPerDay, state.managers.length, Math.round(state.capital)].join('|');
+    if (sig === last.branchesPanel) return;
+    last.branchesPanel = sig;
+
+    var shortfall = state.branches - state.managers.length;
+    var affordable = state.capital >= state.branchCost;
+
+    var list = '';
+    for (var i = 1; i <= state.branches; i += 1) {
+      var staffed = state.managers.length >= i;
+      list += '<div class="frow" style="height:34px">' +
+        '<span class="t">#' + i + '</span>' +
+        '<span class="nm">Филиал ' + i + (i === 1 ? ' · Тверь' : '') + '</span>' +
+        '<span class="' + (staffed ? 'up' : 'down') + ' small">' + (staffed ? 'укомплектован' : 'некомплект') + '</span>' +
+      '</div>';
+    }
+
+    var next = state.nextStage();
+    var check = state.canUpgradeStage();
+
+    var stageCard = '<section class="card">' +
+      '<div class="card-h"><h2>Уровень банка</h2><div class="r">' + state.bankStage + ' / 7</div></div>' +
+      '<div class="card-b">' +
+        '<div class="between"><span class="muted small">Сейчас</span>' +
+          '<b>' + state.stageName() + '</b></div>' +
+        (next
+          ? '<div class="small muted" style="margin-top:8px;line-height:1.4">Для перехода нужны капитал ' +
+              money(next.capital) + ' и ' + next.branches + ' филиала. Лицензия — ' + money(next.cost) + '.</div>' +
+            '<button class="btn btn-primary btn-block" style="margin-top:10px" type="button" data-stage-up' +
+              (check.ok ? '' : ' disabled') + '>' +
+              'Стать «' + next.name + '»' + (check.ok ? ' · ' + money(next.cost) : '') + '</button>'
+          : '<div class="small muted" style="margin-top:8px">Максимальный уровень в прототипе</div>') +
+      '</div>' +
+    '</section>';
+
+    box.innerHTML = stageCard + '<section class="card">' +
+      '<div class="card-h"><h2>Ваша сеть</h2><div class="r">' +
+        '<span class="badge badge-gold">' + state.branches + ' ' + (state.branches === 1 ? 'филиал' : 'филиала') + '</span>' +
+      '</div></div>' +
+      '<div class="card-b">' +
+        '<div class="row" style="gap:8px">' +
+          '<div class="kpi" style="flex:1;border:0;background:var(--raised);padding:8px 12px"><span>Очередь до</span>' +
+            '<div class="v" style="font-size:var(--fs-15)">' + state.queueLimit + '</div></div>' +
+          '<div class="kpi" style="flex:1;border:0;background:var(--raised);padding:8px 12px"><span>Поток / день</span>' +
+            '<div class="v" style="font-size:var(--fs-15)">' + state.clientsPerDay.toFixed(2).replace('.', ',') + '</div></div>' +
+          '<div class="kpi" style="flex:1;border:0;background:var(--raised);padding:8px 12px"><span>Персонал</span>' +
+            '<div class="v" style="font-size:var(--fs-15)' + (shortfall > 0 ? ';color:var(--coral)' : '') + '">' +
+            state.managers.length + ' / ' + state.branches + '</div></div>' +
+        '</div>' +
+        '<div style="margin-top:12px">' + list + '</div>' +
+        (shortfall > 0
+          ? '<div class="warn-note" style="margin-top:10px"><svg class="ic"><use href="#i-alert"/></svg>' +
+            '<div><b>Некомплект персонала</b><p>Филиалов ' + state.branches + ', менеджеров ' + state.managers.length +
+            '. Каждый месяц убыток ' + money(shortfall * 50000) + '.</p></div></div>'
+          : '') +
+        '<button class="btn btn-primary btn-block" style="margin-top:12px" type="button" data-open-branch' +
+          (affordable ? '' : ' disabled title="Не хватает денег"') + '>' +
+          'Открыть филиал · ' + money(state.branchCost) + '</button>' +
+      '</div>' +
+    '</section>';
+  }
+
+  /* ---------- Прогресс автопилота на странице «Клиенты» ---------- */
+  function renderAutopilot() {
+    var bar = document.querySelector('[data-ui="autopilot"]');
+    if (!bar) return;
+
+    var manager = null;
+    state.managers.forEach(function (m) {
+      if (!manager && m.autopilot) manager = m;
+    });
+
+    var target = manager ? state.autopilotTarget() : null;
+    if (!manager || !target) {
+      bar.hidden = true;
+      return;
+    }
+
+    var days = state.managerDaysPerClient(manager);
+    var hoursLeft = Math.max(0, Math.ceil((1 - manager.progress) * days * 24));
+
+    bar.hidden = false;
+    setText(bar.querySelector('[data-ui="ap-name"]'), manager.name + ' обрабатывает ' + target.name, 'ap-name');
+    setText(bar.querySelector('[data-ui="ap-eta"]'), 'осталось ~' + hoursLeft + ' игровых часов', 'ap-eta');
+
+    var fill = bar.querySelector('[data-ui="ap-fill"]');
+    if (fill) fill.style.width = Math.round(manager.progress * 100) + '%';
+  }
+
+  /* ---------- Портфель ---------- */
+  function pfSection(title, items) {
+    if (!items.length) {
+      return '<div class="pf-sec">' +
+        '<div class="pf-head"><span>' + title + ' · 0</span><b>0 ₽</b></div>' +
+        '<div class="pf-empty muted">Пока пусто</div>' +
+      '</div>';
+    }
+
+    var total = items.reduce(function (sum, x) { return sum + x.amount; }, 0);
+    var rows = items.map(function (x) {
+      return '<div class="pf-row">' +
+        '<span class="pf-name">' + x.name + '</span>' +
+        '<span class="pf-amt">' + money(x.amount) + '</span>' +
+        '<span class="pf-term">' + x.monthsLeft + ' мес</span>' +
+        '<span class="pf-rate">' + rateLabel(x.rate) + '</span>' +
+      '</div>';
+    }).join('');
+
+    return '<div class="pf-sec">' +
+      '<div class="pf-head"><span>' + title + ' · ' + items.length + '</span><b>' + money(total) + '</b></div>' +
+      rows +
+    '</div>';
+  }
+
+  function renderPortfolio() {
+    var box = document.querySelector('[data-ui="portfolio"]');
+    if (!box) return;
+
+    var loans = state.activeLoans || [];
+    var deposits = state.activeDeposits || [];
+
+    var signature = loans.map(function (x) { return x.id + ':' + x.monthsLeft; }).join(',') +
+                    '#' + deposits.map(function (x) { return x.id + ':' + x.monthsLeft; }).join(',');
+    if (signature === last.portfolio) return;
+    last.portfolio = signature;
+
+    box.innerHTML = pfSection('Выданные кредиты', loans) + pfSection('Принятые вклады', deposits);
+
+    var total = document.querySelector('[data-ui="pf-total"]');
+    if (total) total.textContent = money(loans.reduce(function (s2, x) { return s2 + x.amount; }, 0));
+  }
+
+  /* ---------- Прибыль в месяц ---------- */
+  function renderProfit() {
+    var value = document.querySelector('[data-ui="kpi-profit"]');
+    if (!value) return;
+
+    var income = state.monthlyIncome();
+    var expense = state.monthlyExpense();
+    var profit = income - expense;
+
+    var parts = global.formatMoneyParts(profit);
+    var html = parts.num + '<small>' + parts.unit + '</small>';
+    if (last.profit !== html) {
+      value.innerHTML = html;
+      last.profit = html;
+    }
+
+    var note = document.querySelector('[data-ui="kpi-profit-d"]');
+    if (note) {
+      var sig = income + '|' + expense;
+      if (last.profitNote !== sig) {
+        last.profitNote = sig;
+        note.innerHTML = '<span class="up">+' + money(income) + '</span> · <span class="down">−' + money(expense) + '</span>';
+      }
+    }
+  }
+
+  /* ---------- Вкладки на «Клиентах» ---------- */
+  function bindTabs() {
+    var buttons = Array.prototype.slice.call(document.querySelectorAll('[data-tab]'));
+    if (!buttons.length) return;
+
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var name = btn.dataset.tab;
+
+        buttons.forEach(function (b) {
+          b.classList.toggle('is-on', b === btn);
+          b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+        });
+
+        var queue = document.querySelector('[data-ui="tab-queue"]');
+        var portfolio = document.querySelector('[data-ui="tab-portfolio"]');
+        if (queue) queue.hidden = name !== 'queue';
+        if (portfolio) portfolio.hidden = name !== 'portfolio';
+      });
+    });
+  }
+
+  /* ---------- Процентная политика ---------- */
+  function ratesHint(kind) {
+    var best = kind === 'loan' ? state.bestLoanRate() : state.bestDepositRate();
+    var mine = kind === 'loan' ? state.playerLoanRate : state.playerDepositRate;
+    if (best === null) return 'конкурентов нет — ставку можно не трогать';
+
+    var diff = kind === 'loan' ? best - mine : mine - best;
+    var round = Math.abs(diff).toFixed(1).replace('.', ',');
+
+    if (diff > 0.2) return 'выгоднее конкурентов на ' + round + ' п.п. — клиенты идут к вам';
+    if (diff < -0.2) return 'хуже конкурентов на ' + round + ' п.п. — клиенты уходят';
+    return 'на уровне рынка';
+  }
+
+  function renderRates() {
+    var box = document.querySelector('[data-ui="rates"]');
+    if (!box) return;
+
+    var sig = [state.playerLoanRate, state.playerDepositRate, state.bestLoanRate(), state.bestDepositRate()].join('|');
+    if (sig === last.rates) return;
+    last.rates = sig;
+
+    var rival = state.activeCompetitors();
+    var rivalText = rival.length
+      ? rival.map(function (c) { return c.name + ': вкл ' + c.depositRate + '% · кр ' + c.loanRate + '%'; }).join(' · ')
+      : 'конкурентов не осталось';
+
+    box.innerHTML = '<div class="card-h"><h2>Процентная политика</h2><div class="r">' + rivalText + '</div></div>' +
+      '<div class="card-b rates">' +
+        '<div class="rate-block">' +
+          '<div class="between"><span>Кредиты</span>' +
+            '<b class="num" data-rate-value="loan">' + rateLabel(state.playerLoanRate) + '</b></div>' +
+          '<input type="range" min="5" max="35" step="0.5" value="' + state.playerLoanRate + '" data-rate="loan" aria-label="Ставка по кредитам">' +
+          '<div class="small muted">' + ratesHint('loan') + '</div>' +
+        '</div>' +
+        '<div class="rate-block">' +
+          '<div class="between"><span>Вклады</span>' +
+            '<b class="num" data-rate-value="deposit">' + rateLabel(state.playerDepositRate) + '</b></div>' +
+          '<input type="range" min="1" max="25" step="0.5" value="' + state.playerDepositRate + '" data-rate="deposit" aria-label="Ставка по вкладам">' +
+          '<div class="small muted">' + ratesHint('deposit') + '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  /* ---------- Биржа ---------- */
+  function renderStocks() {
+    var list = document.querySelector('[data-ui="stocks-list"]');
+    if (!list) return;
+
+    var sub = document.querySelector('[data-ui="stocks-sub"]');
+    if (sub) setText(sub, 'свободно ' + money(state.capital) + ' · комиссия 0,3%', 'stocksSub');
+
+    var myLoan = document.querySelector('[data-ui="my-loan"]');
+    if (myLoan) setText(myLoan, rateLabel(state.playerLoanRate), 'myLoan');
+
+    var myDep = document.querySelector('[data-ui="my-deposit"]');
+    if (myDep) setText(myDep, rateLabel(state.playerDepositRate), 'myDep');
+
+    var count = document.querySelector('[data-ui="stocks-count"]');
+    if (count) setText(count, String(state.competitors.filter(function (c) { return c.status === 'competitor'; }).length), 'stocksCount');
+
+    var sig = state.competitors.map(function (c) {
+      return c.id + ':' + c.playerShare + ':' + c.status;
+    }).join('|') + '#' + Math.round(state.capital);
+    if (sig === last.stocks) return;
+    last.stocks = sig;
+
+    list.innerHTML = state.competitors.map(function (c) {
+      var subsidiary = c.status === 'subsidiary';
+      var price5 = state.packagePrice(c, 5);
+      var price10 = state.packagePrice(c, 10);
+      var can5 = state.capital >= price5;
+      var can10 = state.capital >= price10;
+      var tone = subsidiary ? 'badge-mint' : (c.strategy === 'агрессивный' ? 'badge-coral' : 'badge-muted');
+
+      return '<div class="stock' + (subsidiary ? ' is-sub' : '') + '">' +
+        '<div class="stock-top">' +
+          '<b>' + c.name + '</b>' +
+          '<span class="badge ' + tone + '">' + (subsidiary ? 'дочерний' : c.strategy) + '</span>' +
+          '<span class="stock-price num">' + state.sharePrice(c) + ' ₽</span>' +
+        '</div>' +
+        '<div class="stock-meta">' +
+          'вклады <b>' + rateLabel(c.depositRate) + '</b> · кредиты <b>' + rateLabel(c.loanRate) + '</b>' +
+          ' · капитал ' + money(c.capital) +
+        '</div>' +
+        '<div class="stock-share">' +
+          '<div class="track"><i style="width:' + Math.min(100, c.playerShare) + '%"></i></div>' +
+          '<span class="num">' + c.playerShare + '%</span>' +
+        '</div>' +
+        (subsidiary
+          ? '<div class="stock-note mint">Капитал и клиенты перешли вам</div>'
+          : '<div class="stock-actions">' +
+              '<button class="btn btn-sm" type="button" data-buy="' + c.id + '" data-pct="5"' +
+                (can5 ? '' : ' disabled') + '>Купить 5% · ' + money(price5) + '</button>' +
+              '<button class="btn btn-sm" type="button" data-buy="' + c.id + '" data-pct="10"' +
+                (can10 ? '' : ' disabled') + '>10% · ' + money(price10) + '</button>' +
+            '</div>' +
+            (c.playerShare >= 20
+              ? '<div class="stock-warn">⚠ Требуется согласие ЦБ на покупку &gt;20%</div>'
+              : '')) +
+      '</div>';
+    }).join('');
+  }
+
+  /* ---------- Нормативы на дашборде ---------- */
+  function renderRatios() {
+    var box = document.querySelector('[data-ui="ratios"]');
+    if (!box) return;
+
+    var r = state.computeRatios();
+    var sig = [r.h1, r.h2, r.h3].join('|');
+    if (sig === last.ratios) return;
+    last.ratios = sig;
+
+    var rows = [
+      { name: 'Н1 · достаточность', value: r.h1, min: 8 },
+      { name: 'Н2 · мгновенная ликв.', value: r.h2, min: 15 },
+      { name: 'Н3 · текущая ликв.', value: r.h3, min: 50 }
+    ];
+
+    box.innerHTML = rows.map(function (x) {
+      var capped = Math.min(x.value, 999);
+      var ok = capped >= x.min;
+      var width = Math.max(4, Math.min(100, capped));
+      var dev = Math.abs(capped - x.min).toFixed(1).replace('.', ',');
+
+      return '<div class="gauge">' +
+        '<div class="gauge-h"><span>' + x.name + '</span>' +
+          '<b class="num ' + (ok ? 'up' : 'down') + '">' + (capped >= 999 ? '—' : rateLabel(capped)) + '</b></div>' +
+        '<div class="track"><i class="' + (ok ? '' : 'is-bad') + '" style="width:' + width + '%"></i>' +
+          '<u style="left:' + Math.min(96, x.min) + '%"></u></div>' +
+        '<div class="gauge-f"><span>минимум ' + x.min + '%</span>' +
+          '<span class="' + (ok ? 'up' : 'down') + '">' + (ok ? '+' : '−') + dev + ' п.п.</span></div>' +
+      '</div>';
+    }).join('');
+  }
+
+  /* ---------- Достижения ---------- */
+  function renderAchievements() {
+    var box = document.querySelector('[data-ui="achievements"]');
+    var counter = document.querySelector('[data-ui="ach-count"]');
+
+    if (!box) {
+      if (counter) {
+        var list0 = state.achievementList();
+        counter.textContent = list0.filter(function (a) { return a.got; }).length + '/' + list0.length;
+      }
+      return;
+    }
+
+    var list = state.achievementList();
+    var got = list.filter(function (a) { return a.got; }).length;
+
+    if (counter) counter.textContent = got + ' / ' + list.length;
+
+    var head = document.querySelector('[data-ui="ach-head"]');
+    if (head) head.textContent = 'получено ' + got + ' из ' + list.length;
+
+    box.innerHTML = list.map(function (a) {
+      var percent = a.got ? 100 : Math.max(0, Math.min(100, (a.value / a.target) * 100));
+
+      return '<div class="ach' + (a.got ? ' is-got' : '') + '">' +
+        '<span class="ach-ico">' + (a.got ? '🏆' : '🔒') + '</span>' +
+        '<div class="ach-body">' +
+          '<div class="ach-top"><b>' + a.name + '</b>' +
+            (a.got ? '<span class="badge badge-gold">получено</span>' : '') + '</div>' +
+          '<div class="small muted">' + a.desc + '</div>' +
+          '<div class="ach-bar"><div class="track"><i style="width:' + percent + '%"></i></div>' +
+            '<span class="small muted num">' + a.text + '</span></div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  /* ---------- Служба безопасности ---------- */
+  function renderSecurity() {
+    var shield = document.querySelector('[data-ui="security"]');
+    if (shield) setText(shield, String(state.securityLevel), 'security');
+
+    var panel = document.querySelector('[data-ui="security-panel"]');
+    var incidents = document.querySelector('[data-ui="incidents-panel"]');
+
+    if (panel) {
+      var moles = state.moles();
+      var level = state.securityLevel;
+      var nextCost = 500000;
+
+      panel.innerHTML = '<section class="card">' +
+        '<div class="card-h"><h2>Уровень СБ</h2><div class="r">' + level + ' / 100</div></div>' +
+        '<div class="card-b">' +
+          '<div class="sec-level"><b class="num">' + level + '</b><span>/100</span></div>' +
+          '<div class="track"><i class="' + (level >= 60 ? '' : 'is-bad') + '" style="width:' + level + '%"></i></div>' +
+          '<div class="small muted" style="margin-top:8px">шанс поймать крота — ' + level + '% за месяц</div>' +
+          '<div class="hr"></div>' +
+          '<div class="between small" style="margin-bottom:8px">' +
+            '<span class="muted">Кроты в штате</span>' +
+            '<b class="' + (moles.length ? 'down' : 'up') + '">' + (moles.length ? moles.map(function (m) { return m.name; }).join(', ') : 'не выявлено') + '</b>' +
+          '</div>' +
+          '<div class="row" style="gap:8px">' +
+            '<button class="btn" type="button" data-sec="10" data-cost="300000">Улучшить +10 · 300 000 ₽</button>' +
+            '<button class="btn btn-primary" type="button" data-sec="20" data-cost="500000">Нанять безопасника +20 · 500 000 ₽</button>' +
+          '</div>' +
+          '<div class="small muted" style="margin-top:10px">Менеджеры с лояльностью ниже 40 — лёгкая добыча для конкурентов. ' +
+            'Застой (без повышения) съедает 2–5 пунктов лояльности в месяц.</div>' +
+        '</div>' +
+      '</section>' +
+      '<section class="card">' +
+        '<div class="card-h"><h2>Люди</h2><div class="r">' + state.managers.length + ' в штате</div></div>' +
+        '<div class="card-b">' +
+          state.managers.map(function (m) {
+            return '<div class="between" style="padding:7px 0;border-top:1px solid var(--border)">' +
+              '<span>' + m.name + '</span>' +
+              '<span class="row" style="gap:8px"><span class="small muted num">' + m.loyalty + '</span>' +
+                '<span class="badge ' + (m.mole ? 'badge-coral' : 'badge-mint') + '">' + (m.mole ? 'крот' : 'чист') + '</span>' +
+              '</span>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</section>';
+    }
+
+    if (incidents) {
+      var list = state.incidents.slice(-12).reverse();
+      var labels = { leak: 'утечка', recruit: 'вербовка', caught: 'поимка', upgrade: 'апгрейд' };
+      var tones = { leak: 'badge-coral', recruit: 'badge-coral', caught: 'badge-mint', upgrade: 'badge-muted' };
+
+      incidents.innerHTML = '<section class="card">' +
+        '<div class="card-h"><h2>Инциденты</h2><div class="r">' + state.incidents.length + ' всего</div></div>' +
+        '<div class="card-b">' +
+          (list.length
+            ? list.map(function (i) {
+                return '<div class="inc-row">' +
+                  '<span class="t">д. ' + i.day + '</span>' +
+                  '<span class="badge ' + (tones[i.type] || 'badge-muted') + '">' + (labels[i.type] || i.type) + '</span>' +
+                  '<span class="inc-text">' + i.text + '</span>' +
+                '</div>';
+              }).join('')
+            : '<div class="muted small">Пока тихо. Инциденты появятся, если у менеджеров упадёт лояльность.</div>') +
+        '</div>' +
+      '</section>';
+    }
+  }
+
+  /* ---------- Репутация ---------- */
+  function renderReputation() {
+    var value = document.querySelector('[data-ui="reputation"]');
+    if (value) setText(value, String(Math.round(state.reputation)), 'rep');
+
+    var bar = document.querySelector('[data-ui="rep-bar"]');
+    if (bar) bar.style.width = Math.round(state.reputation) + '%';
+  }
+
+  /* ---------- Проверка ЦБ ---------- */
+  function cbrRowHtml(row) {
+    var hasValue = row.fact < 999;
+    var dev = Math.abs(row.fact - row.min);
+    var devText = hasValue ? (row.ok ? '+' : '−') + dev.toFixed(2).replace('.', ',') + ' п.п.' : '—';
+
+    return '<div class="cbr-row' + (row.ok ? '' : ' is-bad') + '">' +
+      '<span class="cbr-name">' + row.label + '</span>' +
+      '<span class="cbr-facts">' +
+        '<span class="cbr-fact">' + (hasValue ? rateLabel(row.fact) : '—') + '</span>' +
+        '<span class="cbr-min">' + rateLabel(row.min) + '</span>' +
+        '<span class="cbr-dev ' + (row.ok ? 'up' : 'down') + '">' + devText + '</span>' +
+      '</span>' +
+      '<span class="cbr-status"><span class="badge ' + (row.ok ? 'badge-mint' : 'badge-coral') + '">' +
+        (row.ok ? 'в норме' : 'нарушение') + '</span></span>' +
+      '<span class="cbr-fine' + (row.ok ? ' muted' : '') + '">' + (row.ok ? '—' : money(row.fine)) + '</span>' +
+    '</div>';
+  }
+
+  function cbrStepsHtml(insp) {
+    var bad = insp.rows.some(function (r) { return !r.ok; });
+    var done2 = insp.resolved ? 'done' : (bad ? 'bad' : 'done');
+    var done3 = insp.resolved ? 'done' : 'now';
+    var done4 = insp.resolved ? (insp.resolvedOk ? 'done' : 'bad') : '';
+
+    return '<div class="step done"><i>✓</i><span>Документы</span></div>' +
+      '<div class="step-line"></div>' +
+      '<div class="step ' + done2 + '"><i>' + (bad ? '✗' : '✓') + '</i><span>Нормативы</span></div>' +
+      '<div class="step-line"></div>' +
+      '<div class="step ' + done3 + '"><i>3</i><span>Решение</span></div>' +
+      '<div class="step-line"></div>' +
+      '<div class="step ' + done4 + '"><i>4</i><span>Итог</span></div>';
+  }
+
+  function cbrOutcomeHtml(insp) {
+    var titles = {
+      accept: insp.fine > 0 ? 'Предписание принято' : 'Проверка пройдена',
+      'bribe-ok': 'Взятка сработала',
+      'bribe-fail': 'Провал взятки'
+    };
+    var texts = {
+      accept: insp.fine > 0
+        ? 'Штраф ' + money(insp.fine) + ' списан · репутация −4 · строгий контроль ЦБ.'
+        : 'Нарушений не выявлено — банк работает штатно.',
+      'bribe-ok': 'Списано ' + money(insp.resolvedFine) + ' · репутация −2. Проверка закрыта, нарушения скрыты.',
+      'bribe-fail': 'Проверяющий оказался честным. Штраф ' + money(insp.resolvedFine) + ' · репутация −12.'
+    };
+
+    return '<div class="outcome ' + (insp.resolvedOk ? 'is-ok' : 'is-fail') + '">' +
+      '<svg class="ic" style="width:22px;height:22px;flex:0 0 22px"><use href="#' +
+        (insp.resolvedOk ? 'i-check' : 'i-alert') + '"/></svg>' +
+      '<div style="flex:1"><h3>' + (titles[insp.result] || 'Итог') + '</h3>' +
+      '<p>' + (texts[insp.result] || '') + '</p></div>' +
+      '<a class="btn btn-ghost" href="index.html" style="align-self:flex-start">Вернуться на Обзор</a>' +
+    '</div>';
+  }
+
+  function renderInspection() {
+    var body = document.querySelector('[data-ui="cbr-body"]');
+    if (!body) return;
+
+    var insp = state.inspection;
+    var meta = document.querySelector('[data-ui="cbr-meta"]');
+    var count = document.querySelector('[data-ui="cbr-count"]');
+    var steps = document.querySelector('[data-ui="cbr-steps"]');
+
+    if (!insp) {
+      if (meta) meta.textContent = 'активной проверки нет';
+      if (count) count.textContent = '—';
+      if (steps) steps.innerHTML = '';
+      body.innerHTML = '<section class="card"><div class="card-b">' +
+        '<div class="muted">Регулятор придёт на ' + state.nextInspectionDay + '-й игровой день. ' +
+        'Проверку можно вызвать вручную: <code>GameState.startInspection()</code></div>' +
+        '<div style="margin-top:14px"><a class="btn" href="index.html">Вернуться на Обзор</a></div>' +
+        '</div></section>';
+      return;
+    }
+
+    var bad = insp.rows.filter(function (r) { return !r.ok; });
+
+    if (meta) meta.textContent = 'день ' + insp.day + ' · охват: все филиалы · инспектор Савельев Д. К.';
+    if (count) count.textContent = bad.length ? bad.length + ' нарушения' : 'нарушений нет';
+    if (steps) steps.innerHTML = cbrStepsHtml(insp);
+
+    var table = '<section class="card">' +
+      '<div class="card-h"><h2>Проверка нормативов</h2><div class="r">методика ЦБ · 5-я редакция</div></div>' +
+      '<div class="cbr-head-row" aria-hidden="true">' +
+        '<span>Норматив</span><span>Факт</span><span>Минимум</span>' +
+        '<span>Отклонение</span><span>Статус</span><span>Штраф</span>' +
+      '</div>' +
+      insp.rows.map(cbrRowHtml).join('') +
+      '<div class="card-f">' +
+        '<svg class="ic" style="width:13px;height:13px;color:var(--amber)"><use href="#i-alert"/></svg>' +
+        'Итого штраф <b class="num" style="color:var(--text)">' + money(insp.fine) + '</b>' +
+        '<span class="ml-auto">кредитов ' + money(insp.loansTotal) + ' · вкладов ' + money(insp.depositsTotal) + '</span>' +
+      '</div>' +
+    '</section>';
+
+    if (insp.resolved) {
+      body.innerHTML = table + cbrOutcomeHtml(insp);
+      return;
+    }
+
+    var decisions;
+
+    if (!bad.length) {
+      decisions = '<section class="decision">' +
+        '<h3>Нарушений не выявлено</h3>' +
+        '<p>Нормативы в порядке. Регулятор закрывает проверку без предписания.</p>' +
+        '<button class="btn btn-block" type="button" data-cbr-accept>Завершить проверку</button>' +
+      '</section>';
+    } else {
+      decisions = '<div class="decisions">' +
+        '<section class="decision">' +
+          '<h3>Принять предписание</h3>' +
+          '<p>Штраф ' + money(insp.fine) + ' · репутация −4 · строгий контроль ЦБ на 3 месяца. ' +
+            'Нарушения нужно устранить до следующей проверки.</p>' +
+          '<ul class="factors" style="font-size:var(--fs-11)">' +
+            '<li><span>Штраф</span><b class="down">−' + money(insp.fine) + '</b></li>' +
+            '<li><span>Репутация</span><b class="down">−4</b></li>' +
+            '<li><span>Следующая проверка</span><b>через 180 дней</b></li>' +
+          '</ul>' +
+          '<button class="btn btn-block" type="button" data-cbr-accept>Принять предписание</button>' +
+        '</section>' +
+        '<section class="decision is-danger">' +
+          '<h3>Договориться с проверяющим</h3>' +
+          '<p>Шанс успеха ' + Math.round(state.inspectionChance() * 100) + '% — зависит от вашей репутации. ' +
+            'Провал: штраф ×3 от суммы и репутация −12.</p>' +
+          '<div class="bribe-input">' +
+            '<input type="number" min="0" step="50000" value="300000" data-cbr-amount aria-label="Сумма взятки">' +
+            '<span>₽</span>' +
+          '</div>' +
+          '<button class="btn btn-no btn-block" type="button" data-cbr-bribe>Предложить договорённость</button>' +
+        '</section>' +
+      '</div>';
+    }
+
+    body.innerHTML = table + decisions;
+  }
+
+  /* ---------- Общий рендер ---------- */
+  function render() {
+    var cash = money(state.capital);
+
+    if (last.capital !== cash) {
+      els.capital.forEach(function (node) { node.textContent = cash; });
+      last.capital = cash;
+    }
+
+    setText(els.date, state.dateLabel(), 'date');
+    setText(els.dayline, '09:40 · ' + state.dayLabel(), 'dayline');
+    setText(els.stage, state.stageName() + ' · ' + state.dayLabel(), 'stage');
+
+    if (document.documentElement.dataset.stage !== String(state.bankStage)) {
+      document.documentElement.dataset.stage = String(state.bankStage);
+    }
+
+    if (els.kpi) {
+      var parts = global.formatMoneyParts(state.capital);
+      var html = parts.num + '<small>' + parts.unit + '</small>';
+      if (last.kpi !== html) {
+        els.kpi.innerHTML = html;
+        last.kpi = html;
+      }
+    }
+
+    renderDelta();
+    renderLiquid();
+    renderFlow();
+    renderVip();
+    renderQueue();
+    renderManager();
+    renderAutopilot();
+    renderPortfolio();
+    renderProfit();
+    renderReputation();
+    renderRatios();
+    renderInspection();
+    renderBranches();
+    renderRates();
+    renderStocks();
+    renderSecurity();
+    renderAchievements();
+
+    /* всплывающие достижения */
+    if (state.pendingToasts && state.pendingToasts.length && typeof global.showToast === 'function') {
+      state.pendingToasts.splice(0).forEach(function (text) { global.showToast(text); });
+    }
+    refreshAffordability();
+    renderCounts();
+    renderEvents();
+    renderBankrupt();
+
+    /* одноразовые уведомления из состояния */
+    if (state.notice && typeof global.showToast === 'function') {
+      global.showToast(state.notice);
+      state.notice = null;
+    }
+
+    if (state.alert) {
+      if (state.alert === 'bankrupt' && typeof global.showToast === 'function') {
+        global.showToast('🔴 Банк неплатёжеспособен — нужен кредит ЦБ или дефолт');
+      } else if (state.alert === 'low' && typeof global.showToast === 'function') {
+        global.showToast('⚠ Капитал ниже 10% от стартового — кредиты под угрозой');
+      }
+      state.alert = null;
+    }
+  }
+
+  function syncControls() {
+    document.querySelectorAll('.speed button[data-speed]').forEach(function (btn) {
+      var on = !state.paused && !state.bankrupt && Number(btn.dataset.speed) === state.speed;
+      btn.classList.toggle('is-on', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+
+    document.querySelectorAll('.speed button[data-pause]').forEach(function (btn) {
+      btn.classList.toggle('is-on', state.paused || state.bankrupt);
+      btn.setAttribute('aria-pressed', (state.paused || state.bankrupt) ? 'true' : 'false');
+    });
+
+    document.body.classList.toggle('is-paused', state.paused || state.bankrupt);
+  }
+
+  /* ---------- Решения по заявкам ---------- */
+  function bindQueue() {
+    document.querySelectorAll('[data-ui="queue"]').forEach(function (box) {
+      if (box.dataset.bound) return;
+      box.dataset.bound = '1';
+
+      box.addEventListener('click', function (event) {
+        var btn = event.target.closest('[data-decide]');
+        if (!btn || btn.disabled) return;
+
+        var row = btn.closest('[data-client-id]');
+        if (!row) return;
+
+        var id = row.dataset.clientId;
+        var approved = btn.dataset.decide === 'approved';
+        var result = approved ? state.approveClient(id) : state.declineClient(id);
+
+        if (!result || !result.ok) {
+          if (result && result.error === 'insufficient' && typeof global.showToast === 'function') {
+            global.showToast('Недостаточно свободных средств: нужно ' + money(result.need) +
+                             ', доступно ' + money(result.available));
+          }
+          render();
+          return;
+        }
+
+        if (typeof global.showToast === 'function') {
+          global.showToast((approved ? 'Одобрено: ' : 'Отказ: ') + result.client.name + ' · ' + money(result.client.amount));
+        }
+
+        render();
+        syncControls();
+      });
+    });
+  }
+
+  function bindManagers() {
+    document.addEventListener('change', function (event) {
+      var input = event.target.closest && event.target.closest('[data-autopilot]');
+      if (!input) return;
+
+      var manager = state.managerById(input.dataset.autopilot);
+      if (!manager) return;
+
+      manager.autopilot = input.checked;
+      manager.progress = 0;
+      state.save();
+
+      if (typeof global.showToast === 'function') {
+        global.showToast(manager.autopilot
+          ? 'Автопилот включён: ' + manager.name
+          : 'Автопилот выключен: ' + manager.name);
+      }
+      render();
+    });
+
+    document.addEventListener('click', function (event) {
+      var chip = event.target.closest && event.target.closest('[data-manager]');
+      if (chip) {
+        state.activeManagerId = chip.dataset.manager;
+        last.manager = null;
+        render();
+        return;
+      }
+
+      var hire = event.target.closest && event.target.closest('[data-hire]');
+      if (hire) {
+        var res = state.hireCandidate(hire.dataset.hire);
+        if (!res.ok) {
+          if (typeof global.showToast === 'function') {
+            global.showToast(res.error === 'money'
+              ? 'Не хватает на первый месяц: нужно ' + money(res.need)
+              : 'Кандидат недоступен');
+          }
+          return;
+        }
+        last.manager = null;
+        if (typeof global.showToast === 'function') global.showToast('Нанят: ' + res.manager.name);
+        render();
+        return;
+      }
+
+      var reroll = event.target.closest && event.target.closest('[data-reroll]');
+      if (reroll) {
+        state.candidates = [];
+        state.ensureCandidates();
+        state.save();
+        last.manager = null;
+        render();
+        return;
+      }
+
+      var train = event.target.closest && event.target.closest('[data-train]');
+      if (train) {
+        var trained = state.trainManager(state.activeManagerId);
+        if (!trained.ok) {
+          if (typeof global.showToast === 'function') {
+            global.showToast(trained.error === 'money' ? 'Не хватает ' + money(trained.need)
+              : trained.error === 'max' ? 'Максимальный уровень' : 'Не получилось');
+          }
+          return;
+        }
+        last.manager = null;
+        if (typeof global.showToast === 'function') {
+          global.showToast('Уровень ' + trained.manager.level + ' · лояльность +5');
+        }
+        render();
+        return;
+      }
+
+      var promote = event.target.closest && event.target.closest('[data-promote]');
+      if (promote) {
+        var grown = state.promoteManager(state.activeManagerId);
+        if (!grown.ok) {
+          if (typeof global.showToast === 'function') {
+            global.showToast(grown.error === 'money' ? 'Не хватает ' + money(grown.need)
+              : grown.error === 'max' ? 'Максимальный уровень' : 'Не получилось');
+          }
+          return;
+        }
+        last.manager = null;
+        if (typeof global.showToast === 'function') {
+          global.showToast('Уровень ' + grown.manager.level + ' · лояльность +' + grown.loyalty);
+        }
+        render();
+        return;
+      }
+
+      var fire = event.target.closest && event.target.closest('[data-fire]');
+      if (fire) {
+        if (!window.confirm('Уволить менеджера? Выходное пособие — одна зарплата.')) return;
+        var out = state.fireManager(fire.dataset.fire);
+        if (!out.ok) {
+          if (typeof global.showToast === 'function') {
+            global.showToast(out.error === 'last' ? 'Нельзя уволить последнего менеджера' : 'Не получилось');
+          }
+          return;
+        }
+        last.manager = null;
+        if (typeof global.showToast === 'function') global.showToast('Уволен: ' + out.manager.name);
+        render();
+      }
+    });
+  }
+
+  function bindRates() {
+    document.addEventListener('input', function (event) {
+      var input = event.target.closest && event.target.closest('[data-rate]');
+      if (!input) return;
+
+      var kind = input.dataset.rate;
+      var value = Number(input.value);
+
+      if (kind === 'loan') state.setLoanRate(value);
+      else state.setDepositRate(value);
+
+      var label = document.querySelector('[data-rate-value="' + kind + '"]');
+      if (label) label.textContent = rateLabel(value);
+
+      /* подсказка и шапка карточки */
+      last.rates = null;
+      renderRates();
+    });
+  }
+
+  function bindStocks() {
+    document.addEventListener('click', function (event) {
+      var buy = event.target.closest && event.target.closest('[data-buy]');
+      if (!buy) return;
+
+      var percent = Number(buy.dataset.pct);
+      var res = state.buyShares(buy.dataset.buy, percent);
+
+      if (!res.ok) {
+        if (typeof global.showToast === 'function') {
+          global.showToast(res.error === 'money'
+            ? 'Не хватает на пакет: нужно ' + money(res.need)
+            : 'Сделка недоступна');
+        }
+        return;
+      }
+
+      if (typeof global.showToast === 'function') {
+        global.showToast(percent + '% «' + res.competitor.name + '» куплено · −' + money(res.paid));
+      }
+      render();
+    });
+  }
+
+  function bindStage() {
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-stage-up]');
+      if (!btn) return;
+
+      var res = state.upgradeStage();
+      if (!res.ok) {
+        if (typeof global.showToast === 'function') {
+          global.showToast(res.reason === 'capital' ? 'Нужен капитал ' + money(res.need)
+            : res.reason === 'branches' ? 'Нужно филиалов: ' + res.need
+            : 'Не получилось');
+        }
+        return;
+      }
+
+      if (typeof global.showToast === 'function') {
+        global.showToast('Банк стал «' + res.name + '»');
+      }
+      last.branchesPanel = null;
+      render();
+    });
+  }
+
+  function bindSecurity() {
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-sec]');
+      if (!btn) return;
+
+      var res = state.upgradeSecurity(Number(btn.dataset.sec), Number(btn.dataset.cost));
+      if (!res.ok) {
+        if (typeof global.showToast === 'function') {
+          global.showToast(res.error === 'money' ? 'Не хватает: нужно ' + money(res.need) : 'СБ уже на максимуме');
+        }
+        return;
+      }
+
+      if (typeof global.showToast === 'function') global.showToast('СБ: ' + res.level + ' / 100');
+      render();
+    });
+  }
+
+  function bindInspection() {
+    var body = document.querySelector('[data-ui="cbr-body"]');
+    if (!body) return;
+
+    body.addEventListener('click', function (event) {
+      var accept = event.target.closest('[data-cbr-accept]');
+      if (accept) {
+        state.resolveInspection('accept', 0);
+        render();
+        return;
+      }
+
+      var bribe = event.target.closest('[data-cbr-bribe]');
+      if (bribe) {
+        var input = body.querySelector('[data-cbr-amount]');
+        var sum = input ? Number(input.value) || 0 : 0;
+        if (sum <= 0) {
+          if (typeof global.showToast === 'function') global.showToast('Укажите сумму взятки');
+          return;
+        }
+        state.resolveInspection('bribe', sum);
+        render();
+      }
+    });
+  }
+
+  function init() {
+    els.capital = Array.prototype.slice.call(document.querySelectorAll('[data-ui="capital"]'));
+    els.date = document.querySelector('[data-ui="date"]');
+    els.dayline = document.querySelector('[data-ui="dayline"]');
+    els.stage = document.querySelector('[data-ui="stage"]');
+    els.kpi = document.querySelector('[data-ui="kpi-capital"]');
+    els.flow = document.querySelector('[data-ui="flow"]');
+    els.vip = document.querySelector('[data-ui="vip-queue"]');
+    els.queue = document.querySelector('[data-ui="queue"]');
+    els.bankrupt = document.querySelector('[data-ui="bankrupt"]');
+    els.events = document.querySelector('[data-ui="events"]');
+
+    if (!global.GameEngine) {
+      document.querySelectorAll('.speed').forEach(function (node) { node.style.display = 'none'; });
+    }
+
+    var visible = Array.prototype.slice
+      .call(document.querySelectorAll('.speed button[data-speed]'))
+      .filter(function (btn) { return btn.offsetParent !== null; })
+      .map(function (btn) { return Number(btn.dataset.speed); });
+
+    if (visible.length && visible.indexOf(state.speed) === -1) {
+      state.speed = Math.max.apply(null, visible);
+    }
+
+    bindQueue();
+    bindManagers();
+    bindTabs();
+    bindInspection();
+    bindRates();
+    bindStocks();
+    bindSecurity();
+    bindStage();
+    render();
+    syncControls();
+  }
+
+  global.GameUI = {
+    init: init,
+    update: render,
+    render: render,
+    renderFlow: renderFlow,
+    renderQueue: renderQueue,
+    syncControls: syncControls
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!global.GameState) return;
+    if (!document.querySelector('[data-ui="date"]')) return;
+    init();
+    if (global.GameEngine) global.GameEngine.start();
+  });
+})(window);
