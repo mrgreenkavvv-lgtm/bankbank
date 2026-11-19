@@ -1687,7 +1687,7 @@
         this.date = new Date(Number(data.t) || this.startDate.getTime());
 
         var speed = Number(data.speed);
-        this.speed = [1, 2, 5, 10].indexOf(speed) >= 0 ? speed : 1;
+        this.speed = [1, 2, 5, 10, 20, 50].indexOf(speed) >= 0 ? speed : 1;
 
         if (Array.isArray(data.flow) && data.flow.length) {
           this.activeClients = data.flow.slice(0, this.maxClients);

@@ -1996,3 +1996,10 @@ input[data-reserve-sum]:focus, input[data-cb-sum]:focus, input[data-mbk-sum]:foc
   .fx-form { grid-template-columns: 1fr auto; }
   .rm-note { text-align: left; }
 }
+/* скорости ×20 и ×50: компактнее, с прокруткой на узких экранах */
+@media (max-width: 860px) {
+  .hud-m-bot .speed { overflow-x: auto; scrollbar-width: none; }
+  .hud-m-bot .speed::-webkit-scrollbar { display: none; }
+  .hud-m-bot .speed button { min-width: 26px; padding: 0 4px; font-size: var(--fs-10); }
+}
+.hud .speed button { min-width: 30px; padding: 0 6px; }

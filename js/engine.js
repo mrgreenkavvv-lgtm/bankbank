@@ -11,7 +11,7 @@
   if (!state) return;
 
   var TICK_MS = 200;    // частота просчёта (не длина дня)
-  var MAX_DELTA = 3;    // сек: защита от прыжка после фоновой вкладки
+  var MAX_DELTA = 1;    // сек: защита от прыжка после фоновой вкладки
 
   var timer = null;
   var lastTs = 0;
