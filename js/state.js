@@ -101,6 +101,33 @@
     { id: 'mentor', name: 'Наставник', desc: '3 курса обучения', target: 3 }
   ];
 
+  /* старый type → категория уведомлений */
+  var NOTIFY_CATEGORY = {
+    loan: 'money', deposit: 'money', default: 'money', closed: 'money', month: 'money',
+    treasury: 'money', bankrupt: 'money', stock: 'competitor',
+    hire: 'people', fire: 'people', growth: 'people', auto: 'people', 'auto-decline': 'people',
+    cbr: 'cbr',
+    security: 'security',
+    achievement: 'achievement',
+    stage: 'system', branch: 'system', warn: 'system'
+  };
+
+  var NOTIFY_TITLE = {
+    loan: 'Выдан кредит', deposit: 'Принят вклад', default: 'Дефолт', closed: 'Сделка закрыта',
+    month: 'Итоги месяца', cbr: 'Проверка ЦБ', auto: 'Автопилот', 'auto-decline': 'Автопилот: отказ',
+    hire: 'Найм', fire: 'Увольнение', growth: 'Рост', security: 'Безопасность',
+    achievement: 'Достижение', stage: 'Уровень банка', branch: 'Филиал', stock: 'Биржа',
+    treasury: 'Казначейство', warn: 'Внимание', bankrupt: 'Банкротство'
+  };
+
+  var NOTIFY_LINK = {
+    money: 'treasury.html', people: 'manager.html', cbr: 'cbr.html',
+    competitor: 'stocks.html', security: 'security.html',
+    achievement: 'achievements.html', system: 'index.html'
+  };
+
+  var NOTIFY_SEQ = 1;
+
   var NEW_MANAGER_SEQ = 1;
   var NEW_CANDIDATE_SEQ = 0;
 
@@ -707,6 +734,53 @@
       });
 
       return unlocked;
+    },
+
+    /* ---------- Уведомления ---------- */
+    normalizeLog: function () {
+      var self = this;
+
+      this.log = this.log.map(function (entry) {
+        if (typeof entry === 'string') entry = { day: self.dayNumber, type: 'system', text: entry };
+
+        if (!entry.id) {
+          NOTIFY_SEQ += 1;
+          entry.id = 'n' + NOTIFY_SEQ;
+        }
+
+        if (!entry.category) entry.category = NOTIFY_CATEGORY[entry.type] || 'system';
+        if (!entry.title) entry.title = NOTIFY_TITLE[entry.type] || 'Событие';
+        if (!entry.message) entry.message = entry.text || '';
+        if (typeof entry.read !== 'boolean') entry.read = false;
+        if (entry.link === undefined) entry.link = NOTIFY_LINK[entry.category] || '';
+
+        return entry;
+      });
+
+      if (this.log.length > 200) this.log = this.log.slice(-200);
+      return this.log;
+    },
+
+    unreadCount: function () {
+      return this.log.reduce(function (sum, e) { return sum + (e.read ? 0 : 1); }, 0);
+    },
+
+    markRead: function (id) {
+      var entry = null;
+      for (var i = 0; i < this.log.length; i += 1) {
+        if (this.log[i].id === id) entry = this.log[i];
+      }
+      if (!entry || entry.read) return null;
+
+      entry.read = true;
+      this.save();
+      return entry;
+    },
+
+    markAllRead: function () {
+      this.log.forEach(function (e) { e.read = true; });
+      this.save();
+      return this.log.length;
     },
 
     /* ---------- Онбординг ---------- */
@@ -2187,6 +2261,7 @@
     /* ---------- Сохранение ---------- */
     save: function () {
       if (this.noSave) return;
+      this.normalizeLog();
       try {
         localStorage.setItem(SAVE_KEY, JSON.stringify({
           v: SAVE_VERSION,
@@ -2225,6 +2300,7 @@
           negotiation: this.negotiation,
           defaultsThisMonth: this.defaultsThisMonth,
           prevCapital: this.prevCapital,
+          log: this.log.slice(-200),
           ratesLog: this.ratesLog,
           fxSpread: this.fxSpread,
           currencies: this.currencies,
@@ -2316,6 +2392,7 @@
         if (data.negotiation) this.negotiation = data.negotiation;
         if (typeof data.defaultsThisMonth === 'number') this.defaultsThisMonth = data.defaultsThisMonth;
         if (typeof data.prevCapital === 'number') this.prevCapital = data.prevCapital;
+        if (Array.isArray(data.log)) this.log = data.log;
         if (Array.isArray(data.ratesLog)) this.ratesLog = data.ratesLog;
         if (typeof data.fxSpread === 'number') this.fxSpread = data.fxSpread;
         if (data.currencies) this.currencies = data.currencies;

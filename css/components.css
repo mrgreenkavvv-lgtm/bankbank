@@ -2162,3 +2162,50 @@ body, button, a, input, select, textarea,
 .ob-desc { font-size: 10px; color: var(--text-3); line-height: 1.3; }
 .ob-pro { font-size: 10px; color: var(--mint); line-height: 1.3; }
 .ob-con { font-size: 10px; color: var(--coral); line-height: 1.3; }
+/* --------------------------------------------------------------------------
+   37. Уведомления
+   -------------------------------------------------------------------------- */
+.notif-filters { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
+.notif-filters .chip { white-space: nowrap; flex: 0 0 auto; }
+
+.notif-day {
+  font-size: var(--fs-10);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-3);
+  margin: 14px 0 6px;
+}
+.notif-day:first-child { margin-top: 0; }
+
+.notif {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 12px;
+  border-radius: var(--r-m);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, opacity .15s;
+}
+.notif:hover { border-color: var(--border-strong); }
+.notif[role="link"]:hover { border-color: var(--gold); }
+
+.notif.is-unread { background: var(--gold-dim); }
+.notif:not(.is-unread) { opacity: .72; }
+.notif:not(.is-unread) .notif-msg { color: var(--text-3); }
+
+.notif-ico { font-size: 17px; line-height: 1.2; flex: 0 0 auto; }
+.notif-body { flex: 1; min-width: 0; }
+.notif-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.notif-top b { font-size: var(--fs-12); }
+.notif-msg { font-size: var(--fs-11); color: var(--text-2); line-height: 1.4; margin-top: 2px; }
+
+.notif-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gold); flex: 0 0 7px; margin-top: 6px;
+}
+
+/* [hidden] не должен проигрывать классам с display */
+[hidden] { display: none !important; }

@@ -5,7 +5,7 @@
    новый worker поставит новую версию кэша и удалит старую.
    ========================================================================== */
 
-const VERSION = 'v2.7.1';
+const VERSION = 'v2.8.0';
 const CACHE = 'bank-' + VERSION;
 
 const ASSETS = [
@@ -23,6 +23,7 @@ const ASSETS = [
   "./onboarding.html",
   "./profile.html",
   "./reports.html",
+  "./notifications.html",
   "./css/tokens.css",
   "./css/components.css",
   "./js/state.js",

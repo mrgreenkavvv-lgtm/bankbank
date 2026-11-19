@@ -1242,6 +1242,147 @@
     }).join('');
   }
 
+  /* ---------- Уведомления ---------- */
+  var notifFilter = 'all';
+  var notifLimit = 30;
+
+  var NOTIF_META = {
+    money: { ico: '💵', label: 'Финансы' },
+    people: { ico: '👥', label: 'Персонал' },
+    cbr: { ico: '⚖️', label: 'ЦБ' },
+    competitor: { ico: '📈', label: 'Конкуренты' },
+    security: { ico: '🛡', label: 'Безопасность' },
+    achievement: { ico: '🏆', label: 'Достижения' },
+    system: { ico: '⚙️', label: 'Система' }
+  };
+
+  function renderBell() {
+    var unread = state.unreadCount();
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="unread"]'), function (node) {
+      node.textContent = unread > 99 ? '99+' : String(unread);
+      node.hidden = unread === 0;
+    });
+  }
+
+  function notifDateLabel(day) {
+    var days = state.log.map(function (e) { return e.day; });
+    var latest = days.length ? Math.max.apply(null, days) : state.dayNumber;
+
+    if (day === latest) return 'Сегодня';
+    if (day === latest - 1) return 'Вчера';
+    return 'День ' + day;
+  }
+
+  function renderNotifications() {
+    var list = document.querySelector('[data-ui="notif-list"]');
+    if (!list) return;
+
+    var entries = state.log.slice().reverse();
+    var unread = state.unreadCount();
+
+    var sub = document.querySelector('[data-ui="notif-sub"]');
+    if (sub) sub.textContent = 'непрочитанных: ' + unread + ' · всего ' + entries.length;
+
+    /* фильтры */
+    var filters = document.querySelector('[data-ui="notif-filters"]');
+    if (filters) {
+      var chips = [{ id: 'all', label: 'Все' }].concat(Object.keys(NOTIF_META).filter(function (k) {
+        return k !== 'system';
+      }).map(function (k) {
+        return { id: k, label: NOTIF_META[k].label };
+      }));
+
+      filters.innerHTML = chips.map(function (c) {
+        return '<button class="chip' + (notifFilter === c.id ? ' is-on' : '') + '" type="button" data-notif-filter="' +
+          c.id + '">' + c.label + '</button>';
+      }).join('');
+    }
+
+    var visible = notifFilter === 'all'
+      ? entries
+      : entries.filter(function (e) { return e.category === notifFilter; });
+
+    var more = document.querySelector('[data-notif-more]');
+    if (more) more.hidden = visible.length <= notifLimit;
+
+    if (!visible.length) {
+      list.innerHTML = '<section class="card"><div class="card-b"><div class="muted">Пока тихо. Всё под контролем.</div></div></section>';
+      return;
+    }
+
+    var slice = visible.slice(0, notifLimit);
+    var html = '';
+    var lastDay = null;
+
+    slice.forEach(function (e) {
+      if (e.day !== lastDay) {
+        lastDay = e.day;
+        html += '<div class="notif-day">' + notifDateLabel(e.day) + '</div>';
+      }
+
+      var meta = NOTIF_META[e.category] || NOTIF_META.system;
+
+      html += '<div class="notif' + (e.read ? '' : ' is-unread') + '" data-notif="' + e.id + '"' +
+        (e.link ? ' role="link" tabindex="0"' : '') + '>' +
+        '<span class="notif-ico">' + meta.ico + '</span>' +
+        '<div class="notif-body">' +
+          '<div class="notif-top"><b>' + e.title + '</b>' +
+            '<span class="small muted">день ' + e.day + '</span></div>' +
+          '<div class="notif-msg">' + e.message + '</div>' +
+        '</div>' +
+        (e.read ? '' : '<span class="notif-dot"></span>') +
+      '</div>';
+    });
+
+    list.innerHTML = html;
+  }
+
+  function bindNotifications() {
+    document.addEventListener('click', function (event) {
+      var readAll = event.target.closest && event.target.closest('[data-notif-readall]');
+      if (readAll) {
+        state.markAllRead();
+        if (typeof global.showToast === 'function') global.showToast('Все уведомления прочитаны');
+        render();
+        return;
+      }
+
+      var more = event.target.closest && event.target.closest('[data-notif-more]');
+      if (more) {
+        notifLimit += 30;
+        renderNotifications();
+        return;
+      }
+
+      var chip = event.target.closest && event.target.closest('[data-notif-filter]');
+      if (chip) {
+        notifFilter = chip.dataset.notifFilter;
+        notifLimit = 30;
+        renderNotifications();
+        return;
+      }
+
+      var item = event.target.closest && event.target.closest('[data-notif]');
+      if (item) {
+        var id = item.dataset.notif;
+        var entry = null;
+        for (var i = 0; i < state.log.length; i += 1) {
+          if (state.log[i].id === id) entry = state.log[i];
+        }
+        if (!entry) return;
+
+        state.markRead(id);
+
+        if (entry.link) {
+          window.location.href = entry.link;
+          return;
+        }
+
+        render();
+      }
+    });
+  }
+
   /* ---------- Достижения ---------- */
   function renderAchievements() {
     var box = document.querySelector('[data-ui="achievements"]');
@@ -1533,6 +1674,8 @@
     renderPortfolio();
     renderProfit();
     renderBrand();
+    renderBell();
+    renderNotifications();
     renderProfile();
     renderReputation();
     renderRatios();
@@ -1935,6 +2078,7 @@
     bindBranchButton();
     bindNegotiation();
     bindProfileReset();
+    bindNotifications();
     render();
     syncControls();
   }
