@@ -963,6 +963,25 @@
       }).join('');
     }
 
+    var perkBox = document.querySelector('[data-ui="profile-perk"]');
+    if (perkBox) {
+      var perk = state.perkInfo();
+      var specLabel = { retail: '🏦', corporate: '🏢', universal: '🌍', mortgage: '💳', investment: '📈',
+        micro: '🏧', vip: '💎', currency: '🌐', construction: '🏗', cooperative: '🤝' }[state.specialization] || '🌍';
+      var motivLabel = { honest: '🤵', shark: '🦈', people: '🏘', aristocrat: '🎩', analyst: '🧠',
+        risky: '🔥', conservative: '🛡', careerist: '💼', expansionist: '🌍', ludoman: '🎲' }[state.motivation] || '🤵';
+
+      perkBox.innerHTML = '<section class="card">' +
+        '<div class="card-h"><h2>Выбранные перки</h2><div class="r">' + (state.difficulty === 'hardcore' ? 'хардкор' : state.difficulty === 'sandbox' ? 'песочница' : 'нормальный') + '</div></div>' +
+        '<div class="card-b">' +
+          '<div class="perk-row"><span class="perk-ico">' + specLabel + '</span>' +
+            '<div><b>' + perk.spec.name + '</b><div class="small muted">' + perk.spec.effects + '</div></div></div>' +
+          '<div class="perk-row"><span class="perk-ico">' + motivLabel + '</span>' +
+            '<div><b>' + perk.motiv.name + '</b><div class="small muted">' + perk.motiv.effects + '</div></div></div>' +
+        '</div>' +
+      '</section>';
+    }
+
     var ach = document.querySelector('[data-ui="profile-ach"]');
     if (ach) {
       var icons = state.achievementList().map(function (a) {

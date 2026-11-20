@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.9.6';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.9.7';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -115,6 +115,30 @@
     safe: '<rect x="4" y="4" width="16" height="16" rx="2.5"/><circle cx="12" cy="12" r="3.2"/><path d="M12 8.8V7.4M12 16.6v-1.4"/>',
     arrow: '<path d="M12 20V5"/><path d="M6 11l6-6 6 6"/>',
     star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/>'
+  };
+
+  var PERK_INFO = {
+    retail: { name: 'Розничный', effects: '+20% к вкладам · риск −1 · маржа −5%' },
+    corporate: { name: 'Корпоративный', effects: '+15% к ставке · риск +1 · поток −10%' },
+    universal: { name: 'Универсальный', effects: 'без бонусов и штрафов' },
+    mortgage: { name: 'Ипотечный', effects: '+25% к суммам · срок +12 мес · риск +1' },
+    investment: { name: 'Инвестиционный', effects: '+10% купонов · валюта волатильнее · поток −15%' },
+    micro: { name: 'Микрозаймы', effects: '+50% к потоку · риск +2 · суммы −40%' },
+    vip: { name: 'VIP-банк', effects: '+30% шанса VIP-заявок · зарплаты +20%' },
+    currency: { name: 'Валютный', effects: '+15% спреда · 10% капитала в валюте · проверки раз в 120 дней' },
+    construction: { name: 'Строительный', effects: '+20% к суммам · дефолт забирает всё тело' },
+    cooperative: { name: 'Кооперативный', effects: '+15 к лояльности · зарплаты +10% · поток −5%' },
+
+    honest: { name: 'Честный банкир', effects: 'репутация +10 · штрафы ×1,2' },
+    shark: { name: 'Акула рынка', effects: 'капитал ×1,05 · репутация −5' },
+    people: { name: 'Народный банк', effects: 'поток +20% · маржа ×0,9' },
+    aristocrat: { name: 'Аристократ', effects: 'репутация +15 · зарплаты +15%' },
+    analyst: { name: 'Аналитик', effects: 'поток −10%' },
+    risky: { name: 'Рисковый игрок', effects: 'биржа удачнее на 10% · риск +1' },
+    conservative: { name: 'Консерватор', effects: 'риск −1 · поток −15%' },
+    careerist: { name: 'Карьерист', effects: 'рост менеджеров +20% · зарплаты +10%' },
+    expansionist: { name: 'Экспансионист', effects: 'филиал −20% · проверки раз в 150 дней' },
+    ludoman: { name: 'Лудоман', effects: 'шанс баффа +10% · лояльность падает быстрее' }
   };
 
   var NOTIFY_CATEGORY = {
@@ -801,6 +825,12 @@
       var base = (manager.skills && manager.skills[key]) || 0;
       var bonus = (manager.buffBonus && manager.buffBonus[key]) || 0;
       return base + bonus;
+    },
+
+    perkInfo: function () {
+      var spec = PERK_INFO[this.specialization] || PERK_INFO.universal;
+      var motiv = PERK_INFO[this.motivation] || PERK_INFO.honest;
+      return { spec: spec, motiv: motiv };
     },
 
     /* ---------- Эмблема ---------- */
@@ -2162,11 +2192,15 @@
     },
 
     /* сколько игровых дней уходит на одного клиента */
-    managerDaysPerClient: function (manager) {
+    /* сколько клиентов менеджер разбирает за игровой день */
+    managerClientsPerDay: function (manager) {
       var speed = this.skillValue(manager, 'speed');
-      var days = 3 - speed / 50;          // 50 → 2 дня, 100 → 1 день, 150 → 0.5 дня
-      /* верхний порог снят: навыки выше 100 реально ускоряют работу */
-      return Math.max(0.2, Math.min(3, days));
+      /* 10 → 1,45 · 50 → 5,25 · 100 → 10 · 150 → 14,75 */
+      return 0.5 + (Math.max(0, speed) / 100) * 9.5;
+    },
+
+    managerDaysPerClient: function (manager) {
+      return 1 / this.managerClientsPerDay(manager);
     },
 
     /* шанс, что менеджер ошибочно одобрит рискового клиента */
@@ -2201,12 +2235,20 @@
         var target = self.autopilotTarget(manager);
         if (!target) { manager.progress = 0; return; }
 
-        manager.progress += 1 / self.managerDaysPerClient(manager);
-        if (manager.progress < 1) return;
+        /* скорость менеджера задаёт, сколько клиентов он успевает за день */
+        manager.progress += self.managerClientsPerDay(manager);
 
-        manager.progress = 0;
-        var result = self.autopilotDecide(manager, target);
-        if (result) results.push(result);
+        var guard = 0;
+        while (manager.progress >= 1 && guard < 60) {
+          manager.progress -= 1;
+          guard += 1;
+
+          var next = self.autopilotTarget(manager);
+          if (!next) { manager.progress = 0; break; }
+
+          var result = self.autopilotDecide(manager, next);
+          if (result) results.push(result);
+        }
       });
 
       if (results.length) this.save();
@@ -2542,6 +2584,9 @@
         if (typeof data.totalLoansIssued === 'number') this.totalLoansIssued = data.totalLoansIssued;
         if (typeof data.totalDepositsTaken === 'number') this.totalDepositsTaken = data.totalDepositsTaken;
         if (data.bonuses) this.bonuses = data.bonuses;
+
+        /* поток зависит от перков — пересчитываем уже после их загрузки */
+        this.recalcFlow();
         if (data.negotiation) this.negotiation = data.negotiation;
         if (typeof data.defaultsThisMonth === 'number') this.defaultsThisMonth = data.defaultsThisMonth;
         if (typeof data.prevCapital === 'number') this.prevCapital = data.prevCapital;

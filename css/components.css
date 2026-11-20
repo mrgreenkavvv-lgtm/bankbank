@@ -2257,3 +2257,15 @@ body, button, a, input, select, textarea,
   margin-top: 2px;
   font-family: var(--font-mono);
 }
+
+/* профиль: выбранные перки */
+.perk-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.perk-row:first-child { border-top: 0; }
+.perk-ico { font-size: 20px; line-height: 1.2; }
+.perk-row b { font-size: var(--fs-13); }
