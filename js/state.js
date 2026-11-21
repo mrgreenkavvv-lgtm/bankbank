@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.15.1';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.15.2';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -306,7 +306,39 @@
       };
     },
 
-    startInspection: function () {
+    randomInspectionChance: function () {
+      if (this.inspecting) return 0;
+      if (this.difficulty === 'sandbox' || this.nextInspectionDay >= 900000) return 0;
+      if (this.dayNumber < (this.randomCheckAfter || 0)) return 0;
+
+      var r = this.computeRatios();
+      var chance = 0.0005;
+      if (r.h1 < 8) chance *= 2;
+      if (r.h2 < 15) chance *= 2;
+      if (r.h1 >= 8 && r.h2 >= 15 && r.h3 >= 50 && this.reputation > 70) chance *= 0.5;
+
+      return Math.min(chance, 0.02);
+    },
+
+    checkInspectionWarning: function () {
+      if (this.inspectionWarned) return;
+      if (this.nextInspectionDay >= 900000) return;
+
+      var left = this.nextInspectionDay - this.dayNumber;
+      if (left > 14 || left <= 0) return;
+
+      var r = this.computeRatios();
+      this.inspectionWarned = true;
+
+      var text = '⚖️ ЦБ придёт с проверкой через ' + left + ' дней · Н1 ' + Math.round(r.h1) +
+        '% · Н2 ' + (r.h2 > 900 ? '—' : Math.round(r.h2) + '%') +
+        ' · Н3 ' + (r.h3 > 900 ? '—' : Math.round(r.h3) + '%');
+
+      this.log.push({ day: this.dayNumber, type: 'cbr', text: text });
+      this.notice = 'До проверки ЦБ ' + left + ' дней';
+    },
+
+    startInspection: function (kind) {
       var ratios = this.computeRatios();
       var loansTotal = ratios.loansTotal;
       var depositsTotal = ratios.depositsTotal;
@@ -322,7 +354,9 @@
         { label: 'Н3 · текущая ликвидность', fact: h3, min: 50, fine: 200000, ok: h3 >= 50 }
       ];
 
-      if (this.capital < this.startCapital * 0.1) {
+      var random = kind === 'random';
+
+      if (!random && this.capital < this.startCapital * 0.1) {
         rows.push({
           label: 'Капитал ниже 10% от стартового',
           fact: (this.capital / this.startCapital) * 100,
@@ -330,17 +364,27 @@
         });
       }
 
+      var violations = rows.filter(function (r) { return !r.ok; }).length;
       var fineMult = (this.bonuses && this.bonuses.fineMult) || 1;
-      var base = rows.reduce(function (sum, r) { return sum + (r.ok ? 0 : r.fine); }, 0);
-      /* штраф привязан к размеру банка: 0,5–2% капитала */
-      var fine = base > 0
-        ? Math.round(Math.max(base, this.capital * 0.005) * fineMult)
-        : 0;
-      fine = Math.min(fine, Math.round(this.capital * 0.02));
+      var fine;
+
+      if (random) {
+        /* внезапная: 0,2% за нарушение, +0,15% за каждое следующее, максимум 0,5% */
+        fine = violations > 0
+          ? Math.round(this.capital * Math.min(0.005, 0.002 + 0.0015 * (violations - 1)))
+          : 0;
+      } else {
+        var base = rows.reduce(function (sum, r) { return sum + (r.ok ? 0 : r.fine); }, 0);
+        fine = base > 0
+          ? Math.round(Math.max(base, this.capital * 0.005) * fineMult)
+          : 0;
+        fine = Math.min(fine, Math.round(this.capital * 0.02));
+      }
 
       this.inspection = {
         day: this.dayNumber,
         rows: rows,
+        kind: random ? 'random' : 'scheduled',
         fine: fine,
         loansTotal: loansTotal,
         depositsTotal: depositsTotal,
@@ -349,6 +393,20 @@
       };
 
       this.inspecting = true;
+      this.inspectionWarned = false;
+
+      if (random) {
+        this.paused = true;
+        this.log.push({
+          day: this.dayNumber,
+          type: 'cbr',
+          text: '⚖️ Внезапная проверка ЦБ · нарушений: ' + violations
+        });
+        this.checkCapital();
+        this.save();
+        return this.inspection;
+      }
+
       this.nextInspectionDay = this.dayNumber +
         ((this.bonuses && this.bonuses.inspectionDays) || this.stageInfo().inspectDays || 180);
       this.paused = true;
@@ -386,6 +444,7 @@
         insp.resolvedOk = true;
         this.inspecting = false;
         this.paused = false;
+        this.randomCheckAfter = this.dayNumber + 60;
         this.reputation = Math.min(100, this.reputation + 5);
         this.log.push({
           day: this.dayNumber,
@@ -397,13 +456,17 @@
         return result;
       }
 
+      if (mode === 'bribe' && insp.kind === 'random') {
+        return { mode: 'bribe', ok: false, error: 'no-bribe' };
+      }
+
       if (mode === 'bribe' && insp.fine > 0 && bribeSum < insp.fine * 0.3) {
         return { mode: 'bribe', ok: false, error: 'too-small', min: Math.round(insp.fine * 0.3) };
       }
 
       if (mode === 'accept') {
         result.fine = insp.fine;
-        result.reputation = 4;
+        result.reputation = insp.kind === 'random' ? 2 : 4;
         result.ok = true;
         insp.result = 'accept';
         this.log.push({
@@ -441,6 +504,8 @@
 
       this.inspecting = false;
       this.paused = false;
+      this.inspectionWarned = false;
+      this.randomCheckAfter = this.dayNumber + 60;
       this.checkCapital();
       this.save();
 
@@ -963,6 +1028,12 @@
       var self = this;
       this.queue.forEach(function (c) { c.isVip = self.vipFor(c.type, c.amount); });
       this.activeClients.forEach(function (c) { c.isVip = self.vipFor(c.type, c.amount); });
+    },
+
+    setClientIntake: function (value) {
+      if (['all', 'deposit', 'loan'].indexOf(value) === -1) return;
+      this.clientIntake = value;
+      this.save();
     },
 
     setClientFilter: function (value) {
@@ -1698,6 +1769,9 @@
     nextInspectionDay: 221,     // старт (день 41) + 180
     inspecting: false,
     inspection: null,
+    inspectionWarned: false,
+    randomCheckAfter: 0,
+    clientIntake: 'all',
 
     /* ---------- Деньги в обороте ---------- */
     reserved: 0,            // зарезервировано (задел на будущее)
@@ -2426,6 +2500,13 @@
 
       var before = this.capital;
 
+      this.checkInspectionWarning();
+
+      if (!this.inspecting && Math.random() < this.randomInspectionChance()) {
+        this.startInspection('random');
+        return this.capital - before;
+      }
+
       if (this.elapsedDays % this.salaryEveryDays === 0) {
         var monthlyCost = this.monthlyExpenses();
         this.capital -= monthlyCost;
@@ -2599,7 +2680,10 @@
       var loanShare = Math.max(0.15, Math.min(0.85, 0.66 + adv.loan * 0.04));
       var total = depositShare + loanShare;
 
-      var type = Math.random() < (depositShare / total) ? 'deposit' : 'loan';
+      var type;
+      if (this.clientIntake === 'deposit') type = 'deposit';
+      else if (this.clientIntake === 'loan') type = 'loan';
+      else type = Math.random() < (depositShare / total) ? 'deposit' : 'loan';
 
       var stolenBy = null;
       var rivals = this.activeCompetitors();
@@ -2812,6 +2896,9 @@
           incidents: this.incidents,
           activeManagerId: this.activeManagerId,
           notifySeq: NOTIFY_SEQ,
+          inspectionWarned: this.inspectionWarned,
+          randomCheckAfter: this.randomCheckAfter,
+          clientIntake: this.clientIntake,
           capitalHistory: this.capitalHistory,
           today: this.today,
           playerLoanRate: this.playerLoanRate,
@@ -2897,6 +2984,13 @@
         if (typeof data.reputation === 'number') this.reputation = data.reputation;
         if (Array.isArray(data.capitalHistory)) this.capitalHistory = data.capitalHistory.slice(-90);
         if (data.today && typeof data.today === 'object') this.today = data.today;
+
+        if (typeof data.inspectionWarned === 'boolean') this.inspectionWarned = data.inspectionWarned;
+        if (Number(data.randomCheckAfter)) this.randomCheckAfter = Number(data.randomCheckAfter);
+        if (typeof data.clientIntake === 'string' &&
+            ['all', 'deposit', 'loan'].indexOf(data.clientIntake) !== -1) {
+          this.clientIntake = data.clientIntake;
+        }
 
         if (typeof data.activeManagerId === 'string') this.activeManagerId = data.activeManagerId;
         if (Number(data.notifySeq)) NOTIFY_SEQ = Math.max(NOTIFY_SEQ, Number(data.notifySeq));

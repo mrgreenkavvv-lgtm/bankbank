@@ -183,6 +183,102 @@
     });
   }
 
+  /* ---------- Внезапная проверка ЦБ (модалка поверх любой страницы) ---------- */
+  function inspectionRowsHtml(insp) {
+    return insp.rows.map(function (r) {
+      var val = r.label.indexOf('Н2') === 0 || r.label.indexOf('Н3') === 0
+        ? (r.fact > 900 ? '—' : Math.round(r.fact) + '%')
+        : (r.label.indexOf('Капитал') === 0 ? Math.round(r.fact) + '%' : Math.round(r.fact) + '%');
+
+      return '<div class="bal-row"><span>' + r.label + '</span>' +
+        '<b class="num" style="color:' + (r.ok ? 'var(--mint)' : 'var(--coral)') + '">' +
+        val + ' / ≥' + r.min + '</b></div>';
+    }).join('');
+  }
+
+  function ensureInspectionModal() {
+    var modal = document.getElementById('inspection-modal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'inspection-modal';
+    modal.className = 'modal';
+    modal.setAttribute('hidden', 'hidden');
+    modal.innerHTML = '<div class="modal-card" role="dialog" aria-modal="true" aria-label="Внезапная проверка ЦБ"></div>';
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', function (event) {
+      if (!event.target.closest || !event.target.closest('[data-insp-accept]')) return;
+      state.resolveInspection('accept');
+      state.paused = false;
+      modal.hidden = true;
+      last.inspection = null;
+      render();
+      if (typeof global.showToast === 'function') global.showToast('Предписание принято');
+    });
+
+    return modal;
+  }
+
+  function renderInspectionModal() {
+    if (!state.inspecting || !state.inspection || state.inspection.resolved) {
+      var open = document.getElementById('inspection-modal');
+      if (open) open.hidden = true;
+      return;
+    }
+
+    /* плановая проверка живёт на cbr.html, там модалку не показываем */
+    if (state.inspection.kind !== 'random') return;
+    if (String(global.location.pathname).indexOf('cbr.html') >= 0) return;
+
+    var modal = ensureInspectionModal();
+    var insp = state.inspection;
+
+    var html = '<div class="modal-head"><b>Внезапная проверка ЦБ</b>' +
+        '<span class="badge badge-coral">без предупреждения</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="small muted">Проверяются только нормативы. Взятку предложить нельзя.</div>' +
+        '<div style="margin-top:10px">' + inspectionRowsHtml(insp) + '</div>' +
+        '<div class="bal-total">Штраф ' + money(insp.fine) + ' · репутация −2</div>' +
+        '<button class="btn btn-primary btn-block" style="margin-top:12px" type="button" data-insp-accept>' +
+          'Принять предписание</button>' +
+      '</div>';
+
+    var card = modal.querySelector('.modal-card');
+    if (card.innerHTML !== html) card.innerHTML = html;
+    modal.hidden = false;
+  }
+
+  /* ---------- Предупреждение о плановой проверке ---------- */
+  function renderCbrWarning() {
+    var banner = document.querySelector('[data-ui="cbr-warning"]');
+    var days = state.nextInspectionDay - state.dayNumber;
+    var show = !state.inspecting && state.nextInspectionDay < 900000 && days > 0 && days <= 14;
+
+    if (!banner) {
+      if (!show) return;
+      var anchor = document.querySelector('.kpis');
+      if (!anchor || !anchor.parentNode) return;
+
+      banner = document.createElement('div');
+      banner.className = 'warn-note';
+      banner.setAttribute('data-ui', 'cbr-warning');
+      banner.style.marginBottom = '12px';
+      anchor.parentNode.insertBefore(banner, anchor);
+    }
+
+    banner.hidden = !show;
+    if (!show) return;
+
+    var r = state.computeRatios();
+    banner.innerHTML = '<svg class="ic"><use href="#i-alert"/></svg>' +
+      '<div><b>Проверка ЦБ через ' + days + ' ' + (days === 1 ? 'день' : 'дней') + '</b>' +
+        '<p>Н1 ' + (r.h1 > 900 ? '—' : Math.round(r.h1) + '%') +
+        ' · Н2 ' + (r.h2 > 900 ? '—' : Math.round(r.h2) + '%') +
+        ' · Н3 ' + (r.h3 > 900 ? '—' : Math.round(r.h3) + '%') + '</p></div>' +
+      '<a class="btn btn-sm" href="treasury.html">Казначейство</a>';
+  }
+
   /* ---------- Призыв нанять первого менеджера ---------- */
   function renderManagerCta() {
     var kpis = document.querySelector('.kpis');
@@ -312,6 +408,40 @@
         vipRowHtml('deposit', 'Вклады') +
       '</div>' +
     '</div>';
+  }
+
+  var INTAKE_HINT = {
+    all: 'обычный поток',
+    deposit: 'больше денег, но нет процентного дохода',
+    loan: 'доход есть, свободные деньги быстро кончаются'
+  };
+
+  function renderClientIntake() {
+    var box = document.querySelector('[data-ui="client-intake"]');
+    if (!box) return;
+
+    var modes = [
+      { id: 'all', label: 'Всё' },
+      { id: 'deposit', label: 'Только вклады' },
+      { id: 'loan', label: 'Только кредиты' }
+    ];
+
+    var html = '<div class="row" style="gap:7px;flex-wrap:wrap">' +
+      modes.map(function (m) {
+        return '<button class="chip' + (state.clientIntake === m.id ? ' is-on' : '') + '" type="button" data-intake="' +
+          m.id + '">' + m.label + '</button>';
+      }).join('') + '</div>' +
+      '<div class="small muted" style="margin-top:6px">' + (INTAKE_HINT[state.clientIntake] || INTAKE_HINT.all) + '</div>';
+
+    if (box.innerHTML !== html) box.innerHTML = html;
+
+    var sub = document.querySelector('[data-ui="intake-sub"]');
+    if (sub) {
+      var label = state.clientIntake === 'deposit' ? 'только вклады'
+        : state.clientIntake === 'loan' ? 'только кредиты' : 'как обычно';
+      var text = 'Поток: ' + label;
+      if (sub.textContent !== text) sub.textContent = text;
+    }
   }
 
   function renderClientFilters() {
@@ -2190,7 +2320,9 @@
       if (node.textContent !== stageText) node.textContent = stageText;
     });
 
+    /* плановая проверка уводит на cbr.html; внезапная показывается модалкой */
     if (state.inspecting && state.inspection && !state.inspection.resolved &&
+        state.inspection.kind !== 'random' &&
         global.location.pathname.indexOf('cbr.html') < 0) {
       global.location.replace('cbr.html');
       return;
@@ -2216,12 +2348,15 @@
     renderQueue();
     renderVipControl();
     renderClientFilters();
+    renderClientIntake();
     renderManager();
     renderAutopilot();
     renderPortfolio();
     renderProfit();
     renderKpis();
     renderManagerCta();
+    renderInspectionModal();
+    renderCbrWarning();
     renderChart();
     renderBrand();
     renderVersion();
@@ -2587,6 +2722,18 @@
         last.queue = null;
         renderQueue();
         renderClientFilters();
+        return;
+      }
+
+      var intake = event.target.closest && event.target.closest('[data-intake]');
+      if (intake) {
+        state.setClientIntake(intake.dataset.intake);
+        last.clientIntake = null;
+        renderClientIntake();
+        if (typeof global.showToast === 'function') {
+          global.showToast(intake.dataset.intake === 'deposit' ? 'Принимаем только вклады'
+            : intake.dataset.intake === 'loan' ? 'Принимаем только кредиты' : 'Принимаем все заявки');
+        }
         return;
       }
 
