@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.16.1';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.16.2';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -2355,8 +2355,8 @@
       });
       this.activeDeposits = this.activeDeposits.filter(function (d) { return !d.closed; });
 
-      /* свободные деньги приносят ключевую ставку ЦБ */
-      this.capital += Math.max(0, this.cash()) * 0.075 / 12;
+      /* свободный кэш дохода не приносит; резерв — 4% годовых */
+      this.capital += (this.reserved || 0) * 0.04 / 12;
 
       this.lastMonth = {
         day: this.dayNumber,
