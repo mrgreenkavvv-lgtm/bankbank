@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.9.7';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.10.0';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -195,7 +195,10 @@
   function randomClient(day, forcedType) {
     var name = CLIENT_NAMES[Math.floor(Math.random() * CLIENT_NAMES.length)];
     var type = forcedType || (Math.random() < 0.66 ? 'loan' : 'deposit');
-    var amount = Math.round((50000 + Math.random() * 4950000) / 1000) * 1000;
+    /* сумма — доля собственного капитала, иначе поток теряет смысл на крупном банке */
+    var equity = Math.max(500000, GameState.capital || 500000);
+    var amount = Math.round((equity * (0.01 + Math.random() * 0.24)) / 50000) * 50000;
+    amount = Math.max(50000, amount);
     var client = makeClient(day, name, type, amount);
 
     /* ставка клиента — вокруг базовой ставки игрока */
@@ -226,9 +229,9 @@
       return {
         loansTotal: loansTotal,
         depositsTotal: depositsTotal,
-        h1: loansTotal > 0 ? ((this.capital + this.reserved) / loansTotal) * 100 : 999,
-        h2: depositsTotal > 0 ? (this.liquidFunds() / depositsTotal) * 100 : 999,
-        h3: depositsTotal > 0 ? (this.capital / depositsTotal) * 100 : 999
+        h1: loansTotal > 0 ? (this.capital / loansTotal) * 100 : 999,
+        h2: depositsTotal > 0 ? (this.cash() / depositsTotal) * 100 : 999,
+        h3: depositsTotal > 0 ? ((this.cash() + loansTotal) / depositsTotal) * 100 : 999
       };
     },
 
@@ -255,7 +258,12 @@
       }
 
       var fineMult = (this.bonuses && this.bonuses.fineMult) || 1;
-      var fine = Math.round(rows.reduce(function (sum, r) { return sum + (r.ok ? 0 : r.fine); }, 0) * fineMult);
+      var base = rows.reduce(function (sum, r) { return sum + (r.ok ? 0 : r.fine); }, 0);
+      /* штраф привязан к размеру банка: 0,5–2% капитала */
+      var fine = base > 0
+        ? Math.round(Math.max(base, this.capital * 0.005) * fineMult)
+        : 0;
+      fine = Math.min(fine, Math.round(this.capital * 0.02));
 
       this.inspection = {
         day: this.dayNumber,
@@ -268,7 +276,7 @@
       };
 
       this.inspecting = true;
-      this.nextInspectionDay = this.dayNumber + 180;
+      this.nextInspectionDay = this.dayNumber + ((this.bonuses && this.bonuses.inspectionDays) || 180);
       this.paused = true;
 
       this.log.push({
@@ -293,6 +301,24 @@
       if (!insp || insp.resolved) return null;
 
       var result = { mode: mode, ok: false, fine: 0, reputation: 0 };
+
+      if (mode === 'accept' && insp.fine <= 0) {
+        result.fine = 0;
+        result.reputation = -5;          /* −5 к штрафу, т.е. +5 репутации */
+        result.ok = true;
+        insp.result = 'clean';
+        this.reputation = Math.min(100, this.reputation + 5);
+        this.log.push({
+          day: this.dayNumber,
+          type: 'cbr',
+          text: 'Проверка ЦБ пройдена без нарушений · репутация +5'
+        });
+        return result;
+      }
+
+      if (mode === 'bribe' && insp.fine > 0 && bribeSum < insp.fine * 0.3) {
+        return { mode: 'bribe', ok: false, error: 'too-small', min: Math.round(insp.fine * 0.3) };
+      }
 
       if (mode === 'accept') {
         result.fine = insp.fine;
@@ -343,7 +369,7 @@
     /* ---------- Экономика ---------- */
     capital: 8420000,
     startCapital: 8420000,
-    ratePerDay: 0.001,
+    ratePerDay: 0,
     salary: 200000,
     salaryEveryDays: 30,
 
@@ -439,7 +465,7 @@
 
     /* ---------- Ставки игрока ---------- */
     playerLoanRate: 18,
-    playerDepositRate: 10,
+    playerDepositRate: 8,
 
     /* ---------- Конкуренты ---------- */
     competitors: [
@@ -589,17 +615,26 @@
     },
 
     /* ---------- Казначейство: инвестиции ---------- */
+    cbLoanLimit: function () {
+      return Math.round(Math.max(0, this.capital) * 1.5);
+    },
+
     takeCBLoan: function (amount) {
       amount = Math.round(amount);
       if (!(amount > 0)) return { ok: false, error: 'amount' };
 
-      this.capital += amount;
+      var limit = this.cbLoanLimit();
+      var left = Math.max(0, limit - this.investments.cbLoan);
+      if (amount > left) {
+        return { ok: false, error: 'limit', limit: limit, available: left };
+      }
+
       this.investments.cbLoan += amount;
 
       this.log.push({
         day: this.dayNumber,
         type: 'treasury',
-        text: 'Взят кредит ЦБ ' + formatMoney(amount) + ' под 25% · долг ' + formatMoney(this.investments.cbLoan)
+        text: 'Взят кредит ЦБ ' + formatMoney(amount) + ' под 28% · долг ' + formatMoney(this.investments.cbLoan)
       });
       this.checkCapital();
       this.save();
@@ -614,7 +649,6 @@
       if (debt <= 0) return { ok: false, error: 'debt' };
 
       amount = Math.min(amount, debt);
-      this.capital -= amount;
       this.investments.cbLoan -= amount;
 
       this.log.push({
@@ -634,7 +668,6 @@
       var mbk = this.investments.mbkTaken;
       mbk.amount += amount;
       mbk.monthsLeft = 6;
-      this.capital += amount;
 
       this.log.push({
         day: this.dayNumber,
@@ -1512,9 +1545,9 @@
 
     /* поток клиентов: (0,25 + 2 за филиал + бонусы) × 1,2 */
     recalcFlow: function () {
-      var base = 0.25 + 2 * Math.max(0, this.branches - 1) + (this.flowBonus || 0);
+      var base = 1 + 1.9 * Math.max(0, this.branches - 1) + (this.flowBonus || 0);
       var mult = (this.bonuses && this.bonuses.flowMult) || 1;
-      this.clientsPerDay = Math.round(base * 1.2 * mult * 100) / 100;
+      this.clientsPerDay = Math.round(base * mult * 100) / 100;
     },
 
     /* ---------- Найм ---------- */
@@ -1570,12 +1603,45 @@
       return this.date.getDate() + ' ' + MONTHS[this.date.getMonth()] + ' ' + this.date.getFullYear();
     },
 
+    /* расходы за месяц: оклады + содержание филиалов + фикс */
+    monthlyExpenses: function () {
+      var salaries = this.managers.reduce(function (sum, m) { return sum + (m.salary || 0); }, 0);
+      return salaries + 50000 * Math.max(1, this.branches) + 50000;
+    },
+
+    /* вероятность дефолта в месяц по уровню риска (годовые: 1/3/8/18/35%) */
+    monthlyDefaultChance: function (risk) {
+      var annual = { 1: 0.01, 2: 0.03, 3: 0.08, 4: 0.18, 5: 0.35 }[risk];
+      if (!annual) annual = 0.08;
+      return 1 - Math.pow(1 - annual, 1 / 12);
+    },
+
     dayLabel: function () {
       return 'день ' + this.dayNumber;
     },
 
+    /* ---------- Учёт: капитал — это собственные средства ---------- */
+    loansBody: function () {
+      return this.activeLoans.reduce(function (s, l) { return s + l.amount; }, 0);
+    },
+
+    depositsBody: function () {
+      return this.activeDeposits.reduce(function (s, d) { return s + d.amount; }, 0);
+    },
+
+    /* свободные деньги: капитал + привлечённое − выданное */
+    cash: function () {
+      var inv = this.investments || {};
+      return this.capital
+        + this.depositsBody()
+        + (inv.cbLoan || 0) + ((inv.mbkTaken && inv.mbkTaken.amount) || 0)
+        - this.loansBody()
+        - ((inv.mbkGiven && inv.mbkGiven.amount) || 0)
+        - this.reserved;
+    },
+
     liquidFunds: function () {
-      return this.capital - this.reserved;
+      return this.cash();
     },
 
     /* хватает ли свободных денег на заявку */
@@ -1650,6 +1716,9 @@
         potential = 'high';
         potentialMax = 90 + Math.floor(Math.random() * 11);
       }
+
+      if (potential !== 'genius') potentialMax = Math.max(potentialMax, level + 1);
+      potentialMax = Math.min(100, potentialMax);
 
       var market = Math.round(((30000 + level * 2200) * ((this.bonuses && this.bonuses.salaryMult) || 1)) / 1000) * 1000;
 
@@ -1804,14 +1873,14 @@
 
       if (comp.playerShare >= 50.5) {
         comp.status = 'subsidiary';
-        this.capital += comp.capital;
+        /* капитал остаётся у дочернего банка; вы получаете его поток и долю прибыли */
         this.queueLimit += 10;
         this.flowBonus = (this.flowBonus || 0) + 1;
         this.recalcFlow();
         this.log.push({
           day: this.dayNumber,
           type: 'stock',
-          text: '🏦 «' + comp.name + '» стал дочерним: капитал ' + formatMoney(comp.capital) + ' перешёл вам'
+          text: '🏦 «' + comp.name + '» стал дочерним: поток клиентов и 3% его капитала в год вам'
         });
       }
 
@@ -1877,6 +1946,7 @@
       var defaults = 0;
 
       this.defaultsThisMonth = 0;
+      var cleanMonth = true;
 
       /* ---- кредиты: наш доход ---- */
       this.activeLoans.forEach(function (loan) {
@@ -1885,14 +1955,15 @@
         income += interest;
         loan.monthsLeft -= 1;
 
-        /* дефолт только по рисковым */
-        if (loan.risk >= 4 && Math.random() < 0.15) {
+        /* дефолт возможен на любом риске — по годовой вероятности уровня */
+        if (Math.random() < self.monthlyDefaultChance(loan.risk)) {
           loan.closed = 'default';
           defaults += 1;
           self.defaultsThisMonth += 1;
+          cleanMonth = false;
 
-          var lossRate = (self.bonuses && typeof self.bonuses.defaultLoss === 'number') ? self.bonuses.defaultLoss : 0.8;
-          var recovered = Math.round(loan.amount * (1 - lossRate));
+          var recovered = Math.round(loan.amount * (0.30 + Math.random() * 0.08));
+          self.capital -= (loan.amount - recovered);
           if (recovered > 0) self.capital += recovered;
 
           self.log.push({
@@ -1906,7 +1977,6 @@
         }
 
         if (loan.monthsLeft <= 0) {
-          self.capital += loan.amount;
           loan.closed = 'paid';
           self.log.push({
             day: self.dayNumber,
@@ -1917,6 +1987,10 @@
       });
       this.activeLoans = this.activeLoans.filter(function (l) { return !l.closed; });
 
+      if (cleanMonth && defaults === 0) {
+        this.reputation = Math.min(100, this.reputation + 1);
+      }
+
       /* ---- вклады: наш расход ---- */
       this.activeDeposits.forEach(function (dep) {
         var interest = dep.amount * (dep.rate / 100) / 12;
@@ -1925,7 +1999,6 @@
         dep.monthsLeft -= 1;
 
         if (dep.monthsLeft <= 0) {
-          self.capital -= dep.amount;
           dep.closed = 'returned';
           self.log.push({
             day: self.dayNumber,
@@ -1962,7 +2035,7 @@
       var treasuryNet = 0;
 
       if (treasury.cbLoan > 0) {
-        var cbInterest = treasury.cbLoan * 0.25 / 12;
+        var cbInterest = treasury.cbLoan * 0.28 / 12;
         this.capital -= cbInterest;
         treasuryNet -= cbInterest;
         expense += cbInterest;
@@ -1972,6 +2045,14 @@
           text: 'Проценты ЦБ · −' + formatMoney(cbInterest) + ' · долг ' + formatMoney(treasury.cbLoan)
         });
       }
+
+      /* дивиденды дочерних банков */
+      this.competitors.forEach(function (comp) {
+        if (comp.status !== 'subsidiary') return;
+        var share = comp.capital * 0.03 / 12;
+        self.capital += share;
+        income += share;
+      });
 
       if (treasury.mbkTaken.amount > 0) {
         var mbkIn = treasury.mbkTaken.amount * 0.15 / 12;
@@ -2135,12 +2216,12 @@
       this.dayNumber = this.startDayNumber + this.elapsedDays;
 
       var before = this.capital;
-      this.capital = this.capital * (1 + this.ratePerDay);
 
       if (this.elapsedDays % this.salaryEveryDays === 0) {
-        this.capital -= this.salary;
-        this.log.push({ day: this.dayNumber, type: 'salary', text: 'Зарплата менеджеров −' + formatMoney(this.salary) });
-        console.log('[state] зарплата · −' + formatMoney(this.salary) + ' · день ' + this.dayNumber);
+        var monthlyCost = this.monthlyExpenses();
+        this.capital -= monthlyCost;
+        this.log.push({ day: this.dayNumber, type: 'salary', text: 'Расходы за месяц −' + formatMoney(monthlyCost) });
+        console.log('[state] расходы · −' + formatMoney(monthlyCost) + ' · день ' + this.dayNumber);
 
         this.processMonthlyEconomy();
       }
@@ -2195,8 +2276,8 @@
     /* сколько клиентов менеджер разбирает за игровой день */
     managerClientsPerDay: function (manager) {
       var speed = this.skillValue(manager, 'speed');
-      /* 10 → 1,45 · 50 → 5,25 · 100 → 10 · 150 → 14,75 */
-      return 0.5 + (Math.max(0, speed) / 100) * 9.5;
+      /* 10 → 0,56 · 50 → 1,2 · 100 → 2,0 клиента в день */
+      return 0.4 + (Math.max(0, speed) / 100) * 1.6;
     },
 
     managerDaysPerClient: function (manager) {
@@ -2263,7 +2344,7 @@
       } else if (this.liquidFunds() < client.amount) {
         approve = false;                                  // денег нет
       } else if (client.risk >= 4) {
-        approve = Math.random() < this.managerMistakeChance(manager);  // риск: может ошибиться
+        approve = false;                                  // рискованные не берём никогда
       } else {
         approve = true;
       }
@@ -2390,7 +2471,7 @@
       this.queue.splice(index, 1);
 
       if (client.type === 'loan') {
-        this.capital -= client.amount;
+        /* деньги уходят в актив, капитал не меняется */
         this.activeLoans.push({
           id: client.id, name: client.name, amount: client.amount,
           rate: client.rate, monthsLeft: client.term, risk: client.risk,
@@ -2402,7 +2483,7 @@
         this.log.push({ day: this.dayNumber, type: 'loan', text: 'Выдан кредит · ' + client.name + ' · ' + formatMoney(client.amount) });
         console.log('[state] одобрен кредит · ' + client.name + ' · −' + formatMoney(client.amount));
       } else {
-        this.capital += client.amount;
+        /* привлечённые деньги — обязательство, капитал не растёт */
         this.activeDeposits.push({
           id: client.id, name: client.name, amount: client.amount,
           rate: client.rate, monthsLeft: client.term, risk: client.risk,
@@ -2488,6 +2569,8 @@
           stats: this.stats,
           securityLevel: this.securityLevel,
           incidents: this.incidents,
+          activeManagerId: this.activeManagerId,
+          notifySeq: NOTIFY_SEQ,
           playerLoanRate: this.playerLoanRate,
           playerDepositRate: this.playerDepositRate,
           competitors: this.competitors,
@@ -2568,6 +2651,8 @@
         if (Array.isArray(data.loans)) this.activeLoans = data.loans;
         if (Array.isArray(data.deposits)) this.activeDeposits = data.deposits;
         if (typeof data.reputation === 'number') this.reputation = data.reputation;
+        if (typeof data.activeManagerId === 'string') this.activeManagerId = data.activeManagerId;
+        if (Number(data.notifySeq)) NOTIFY_SEQ = Math.max(NOTIFY_SEQ, Number(data.notifySeq));
         if (typeof data.playerLoanRate === 'number') this.playerLoanRate = data.playerLoanRate;
         if (typeof data.playerDepositRate === 'number') this.playerDepositRate = data.playerDepositRate;
         if (Array.isArray(data.competitors) && data.competitors.length) this.competitors = data.competitors;
