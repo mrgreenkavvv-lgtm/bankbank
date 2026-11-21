@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.11.0';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.12.0';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -197,7 +197,7 @@
     var type = forcedType || (Math.random() < 0.66 ? 'loan' : 'deposit');
     /* сумма — доля собственного капитала, иначе поток теряет смысл на крупном банке */
     var equity = Math.max(500000, GameState.capital || 500000);
-    var amount = Math.round((equity * (0.01 + Math.random() * 0.06)) / 50000) * 50000;
+    var amount = Math.round((equity * (0.02 + Math.random() * 0.06)) / 50000) * 50000;
     amount = Math.max(50000, amount);
     var client = makeClient(day, name, type, amount);
 
@@ -471,8 +471,8 @@
     incidents: [],
 
     /* ---------- Ставки игрока ---------- */
-    playerLoanRate: 18,
-    playerDepositRate: 8,
+    playerLoanRate: 22,
+    playerDepositRate: 6,
 
     /* ---------- Конкуренты ---------- */
     competitors: [
@@ -977,8 +977,8 @@
       b.fxSpreadMult = 1;
       b.inspectionDays = 0;
 
-      this.playerLoanRate = 18;
-      this.playerDepositRate = 10;
+      this.playerLoanRate = 22;
+      this.playerDepositRate = 6;
 
       /* --- специализация --- */
       switch (this.specialization) {
@@ -987,7 +987,7 @@
           break;
         case 'corporate':
           b.loanRateDelta = 2.7; b.riskDelta = 1; b.flowMult = 0.9;
-          this.playerLoanRate = 20.7;
+          this.playerLoanRate = 24.7;
           break;
         case 'mortgage':
           b.loanAmountMult = 1.25; b.loanTermDelta = 12; b.riskDelta = 1;
@@ -1610,12 +1610,12 @@
     /* расходы за месяц: оклады + содержание филиалов + фикс */
     monthlyExpenses: function () {
       var salaries = this.managers.reduce(function (sum, m) { return sum + (m.salary || 0); }, 0);
-      return salaries + 50000 * Math.max(1, this.branches) + 50000;
+      return salaries + 30000 * Math.max(1, this.branches) + 30000;
     },
 
     /* вероятность дефолта в месяц по уровню риска (годовые: 1/3/8/18/35%) */
     monthlyDefaultChance: function (risk) {
-      var annual = { 1: 0.01, 2: 0.03, 3: 0.08, 4: 0.18, 5: 0.35 }[risk];
+      var annual = { 1: 0.005, 2: 0.02, 3: 0.05, 4: 0.25, 5: 0.50 }[risk];
       if (!annual) annual = 0.08;
       return 1 - Math.pow(1 - annual, 1 / 12);
     },
@@ -2034,7 +2034,7 @@
           self.defaultsThisMonth += 1;
           cleanMonth = false;
 
-          var recovered = Math.round(loan.amount * (0.30 + Math.random() * 0.08));
+          var recovered = Math.round(loan.amount * (0.40 + Math.random() * 0.05));
           self.capital -= (loan.amount - recovered);
 
           self.log.push({
@@ -2090,6 +2090,9 @@
         }
       });
       this.activeDeposits = this.activeDeposits.filter(function (d) { return !d.closed; });
+
+      /* свободные деньги приносят ключевую ставку ЦБ */
+      this.capital += Math.max(0, this.cash()) * 0.075 / 12;
 
       this.lastMonth = {
         day: this.dayNumber,
@@ -2538,7 +2541,7 @@
 
       /* достаточность капитала: портфель не может расти быстрее собственных средств */
       if (client.type === 'loan') {
-        var cap = Math.max(0, this.capital) * 5;
+        var cap = Math.max(0, this.capital) * 8;
         if (this.loansBody() + client.amount > cap) {
           return {
             ok: false,
