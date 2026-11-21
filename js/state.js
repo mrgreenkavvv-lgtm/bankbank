@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.10.0';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.11.0';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -197,7 +197,7 @@
     var type = forcedType || (Math.random() < 0.66 ? 'loan' : 'deposit');
     /* сумма — доля собственного капитала, иначе поток теряет смысл на крупном банке */
     var equity = Math.max(500000, GameState.capital || 500000);
-    var amount = Math.round((equity * (0.01 + Math.random() * 0.24)) / 50000) * 50000;
+    var amount = Math.round((equity * (0.01 + Math.random() * 0.06)) / 50000) * 50000;
     amount = Math.max(50000, amount);
     var client = makeClient(day, name, type, amount);
 
@@ -307,12 +307,19 @@
         result.reputation = -5;          /* −5 к штрафу, т.е. +5 репутации */
         result.ok = true;
         insp.result = 'clean';
+        insp.resolved = true;
+        insp.resolvedFine = 0;
+        insp.resolvedOk = true;
+        this.inspecting = false;
+        this.paused = false;
         this.reputation = Math.min(100, this.reputation + 5);
         this.log.push({
           day: this.dayNumber,
           type: 'cbr',
           text: 'Проверка ЦБ пройдена без нарушений · репутация +5'
         });
+        this.checkCapital();
+        this.save();
         return result;
       }
 
@@ -563,7 +570,6 @@
       var price = this.fxPrice(code, 'buy');
       var amount = rub / price;
 
-      this.capital -= rub;
       c.amount += amount;
       c.cost += rub;
 
@@ -589,7 +595,7 @@
 
       c.amount -= amount;
       c.cost = Math.max(0, c.cost - avg * amount);
-      this.capital += rub;
+      this.capital += (rub - avg * amount);   /* в капитал только реализованный результат */
 
       this.log.push({
         day: this.dayNumber,
@@ -689,7 +695,6 @@
       var mbk = this.investments.mbkGiven;
       mbk.amount += amount;
       mbk.monthsLeft = 6;
-      this.capital -= amount;
 
       this.log.push({
         day: this.dayNumber,
@@ -708,7 +713,6 @@
       }
 
       var ofz = type === 'ofz';
-      this.capital -= amount;
       this.investments.bonds.push({
         id: 'b' + (this.investments.bonds.length + 1) + '-' + this.dayNumber,
         type: type,
@@ -742,7 +746,7 @@
     canUpgradeStage: function () {
       var next = this.nextStage();
       if (!next) return { ok: false, reason: 'max' };
-      if (this.capital < next.capital) {
+      if (this.liquidFunds() < next.capital) {
         return { ok: false, reason: 'capital', need: next.capital, next: next };
       }
       if (this.branches < next.branches) {
@@ -1270,7 +1274,7 @@
       if (!m) return { ok: false, error: 'not-found' };
       if (m.level >= (m.potentialMax || 100)) return { ok: false, error: 'potential' };
       if (m.level >= 100) return { ok: false, error: 'max' };
-      if (this.capital < this.trainCost) {
+      if (this.liquidFunds() < this.trainCost) {
         return { ok: false, error: 'money', need: this.trainCost, available: this.capital };
       }
 
@@ -1303,8 +1307,8 @@
       if (m.level >= 100) return { ok: false, error: 'max' };
 
       var cost = this.promoteCost(m);
-      if (this.capital < cost) {
-        return { ok: false, error: 'money', need: cost, available: this.capital };
+      if (this.liquidFunds() < cost) {
+        return { ok: false, error: 'money', need: cost, available: this.liquidFunds() };
       }
 
       var growth = (this.bonuses && this.bonuses.growthMult) || 1;
@@ -1341,7 +1345,7 @@
 
     upgradeSecurity: function (points, cost) {
       if (this.securityLevel >= 100) return { ok: false, error: 'max' };
-      if (this.capital < cost) return { ok: false, error: 'money', need: cost, available: this.capital };
+      if (this.liquidFunds() < cost) return { ok: false, error: 'money', need: cost, available: this.liquidFunds() };
 
       this.capital -= cost;
       this.securityLevel = Math.min(100, this.securityLevel + points);
@@ -1545,7 +1549,7 @@
 
     /* поток клиентов: (0,25 + 2 за филиал + бонусы) × 1,2 */
     recalcFlow: function () {
-      var base = 1 + 1.9 * Math.max(0, this.branches - 1) + (this.flowBonus || 0);
+      var base = 1 + 1.9 * Math.pow(Math.max(0, this.branches - 1), 0.6) + (this.flowBonus || 0);
       var mult = (this.bonuses && this.bonuses.flowMult) || 1;
       this.clientsPerDay = Math.round(base * mult * 100) / 100;
     },
@@ -1629,6 +1633,11 @@
       return this.activeDeposits.reduce(function (s, d) { return s + d.amount; }, 0);
     },
 
+    fxCost: function () {
+      var c = this.currencies || {};
+      return ((c.usd && c.usd.cost) || 0) + ((c.eur && c.eur.cost) || 0) + ((c.cny && c.cny.cost) || 0);
+    },
+
     /* свободные деньги: капитал + привлечённое − выданное */
     cash: function () {
       var inv = this.investments || {};
@@ -1636,12 +1645,73 @@
         + this.depositsBody()
         + (inv.cbLoan || 0) + ((inv.mbkTaken && inv.mbkTaken.amount) || 0)
         - this.loansBody()
+        - this.bondsValue()
+        - this.fxCost()
         - ((inv.mbkGiven && inv.mbkGiven.amount) || 0)
         - this.reserved;
     },
 
     liquidFunds: function () {
-      return this.cash();
+      return Math.max(0, this.cash());
+    },
+
+    /* инвариант cash() >= 0: сначала ЦБ, потом бумаги/валюта, в конце капитал */
+    ensureLiquidity: function () {
+      var gap = -this.cash();
+      if (gap <= 0) return 0;
+
+      var taken = 0;
+
+      var limitLeft = Math.max(0, this.cbLoanLimit() - this.investments.cbLoan);
+      if (limitLeft > 0) {
+        var take = Math.min(gap, limitLeft);
+        this.investments.cbLoan += take;
+        gap -= take;
+        taken += take;
+      }
+
+      if (gap > 0 && this.investments.bonds.length) {
+        var bonds = this.investments.bonds;
+        while (gap > 0 && bonds.length) {
+          var b = bonds[0];
+          if (b.amount <= gap) {
+            gap -= b.amount;
+            bonds.shift();
+          } else {
+            b.amount -= gap;
+            gap = 0;
+          }
+        }
+      }
+
+      if (gap > 0) {
+        ['usd', 'eur', 'cny'].forEach(function (code) {
+          var c = this.currencies[code];
+          if (gap <= 0 || !c || c.cost <= 0) return;
+          var avg = c.amount > 0 ? c.cost / c.amount : 0;
+          if (avg <= 0) return;
+          var sellAmount = Math.min(c.amount, gap / avg);
+          c.amount -= sellAmount;
+          c.cost = Math.max(0, c.cost - avg * sellAmount);
+          gap -= sellAmount * avg;
+        }, this);
+      }
+
+      if (gap > 0) {
+        this.capital -= gap;
+        gap = 0;
+      }
+
+      if (taken > 0) {
+        this.log.push({
+          day: this.dayNumber,
+          type: 'treasury',
+          text: 'Кассовый разрыв: взят кредит ЦБ ' + formatMoney(taken) +
+            ' · долг ' + formatMoney(this.investments.cbLoan)
+        });
+      }
+
+      return taken;
     },
 
     /* хватает ли свободных денег на заявку */
@@ -1653,6 +1723,7 @@
 
     /* пороги: < 10% от стартового — предупреждение, < 0 — крах */
     checkCapital: function () {
+      this.ensureLiquidity();
       var low = this.startCapital * 0.1;
 
       if (this.capital < 0 && !this.bankrupt) {
@@ -1754,7 +1825,7 @@
       var cand = this.candidates[idx];
       var upfront = cand.salary;                 // первый месяц вперёд
 
-      if (this.capital < upfront) {
+      if (this.liquidFunds() < upfront) {
         return { ok: false, error: 'money', need: upfront, available: this.capital };
       }
 
@@ -1849,8 +1920,8 @@
       if (!comp || comp.status !== 'competitor') return { ok: false, error: 'not-found' };
 
       var price = this.packagePrice(comp, percent);
-      if (this.capital < price) {
-        return { ok: false, error: 'money', need: price, available: this.capital };
+      if (this.liquidFunds() < price) {
+        return { ok: false, error: 'money', need: price, available: this.liquidFunds() };
       }
 
       this.capital -= price;
@@ -1895,13 +1966,14 @@
     /* ---------- Филиалы ---------- */
     branchPrice: function () {
       var mult = (this.bonuses && this.bonuses.branchCostMult) || 1;
-      return Math.round((this.branchCost * mult) / 100000) * 100000;
+      var scale = 1 + Math.max(0, this.capital) / 100000000;
+      return Math.round((this.branchCost * mult * scale) / 100000) * 100000;
     },
 
     openBranch: function () {
       var price = this.branchPrice();
-      if (this.capital < price) {
-        return { ok: false, error: 'money', need: price, available: this.capital };
+      if (this.liquidFunds() < price) {
+        return { ok: false, error: 'money', need: price, available: this.liquidFunds() };
       }
 
       this.capital -= price;
@@ -1964,7 +2036,6 @@
 
           var recovered = Math.round(loan.amount * (0.30 + Math.random() * 0.08));
           self.capital -= (loan.amount - recovered);
-          if (recovered > 0) self.capital += recovered;
 
           self.log.push({
             day: self.dayNumber,
@@ -1999,6 +2070,17 @@
         dep.monthsLeft -= 1;
 
         if (dep.monthsLeft <= 0) {
+          /* денег на выплату нет — вклад пролонгируется, кассового разрыва не создаём */
+          if (self.cash() < dep.amount) {
+            dep.monthsLeft = dep.term || 12;
+            self.log.push({
+              day: self.dayNumber,
+              type: 'deposit',
+              text: 'Вклад пролонгирован: ' + dep.name + ' · ' + formatMoney(dep.amount)
+            });
+            return;
+          }
+
           dep.closed = 'returned';
           self.log.push({
             day: self.dayNumber,
@@ -2061,7 +2143,6 @@
         expense += mbkIn;
         treasury.mbkTaken.monthsLeft -= 1;
         if (treasury.mbkTaken.monthsLeft <= 0) {
-          this.capital -= treasury.mbkTaken.amount;
           this.log.push({
             day: this.dayNumber,
             type: 'treasury',
@@ -2078,7 +2159,6 @@
         income += mbkOut;
         treasury.mbkGiven.monthsLeft -= 1;
         if (treasury.mbkGiven.monthsLeft <= 0) {
-          this.capital += treasury.mbkGiven.amount;
           this.log.push({
             day: this.dayNumber,
             type: 'treasury',
@@ -2101,6 +2181,7 @@
         if (bond.type === 'corp' && Math.random() < corpRisk) {
           bond.defaulted = true;
           selfT.defaultsThisMonth += 1;
+          selfT.capital -= bond.amount;
           selfT.log.push({
             day: selfT.dayNumber,
             type: 'default',
@@ -2110,7 +2191,7 @@
         }
 
         if (bond.monthsLeft <= 0) {
-          selfT.capital += bond.amount;
+          /* бумага гасится в деньги: капитал не меняется */
           bond.redeemed = true;
           selfT.log.push({
             day: selfT.dayNumber,
@@ -2455,6 +2536,20 @@
 
       var client = this.queue[index];
 
+      /* достаточность капитала: портфель не может расти быстрее собственных средств */
+      if (client.type === 'loan') {
+        var cap = Math.max(0, this.capital) * 5;
+        if (this.loansBody() + client.amount > cap) {
+          return {
+            ok: false,
+            error: 'capital',
+            client: client,
+            need: Math.round(this.loansBody() + client.amount - cap),
+            available: Math.round(cap)
+          };
+        }
+      }
+
       /* кредит нельзя выдать, если свободных денег не хватает */
       if (client.type === 'loan' && this.liquidFunds() < client.amount) {
         console.warn('[state] отказ движка: нужно ' + formatMoney(client.amount) +
@@ -2653,6 +2748,14 @@
         if (typeof data.reputation === 'number') this.reputation = data.reputation;
         if (typeof data.activeManagerId === 'string') this.activeManagerId = data.activeManagerId;
         if (Number(data.notifySeq)) NOTIFY_SEQ = Math.max(NOTIFY_SEQ, Number(data.notifySeq));
+
+        /* страховка для старых сейвов: поднимаем счётчик выше всех id в логе */
+        if (Array.isArray(this.log)) {
+          this.log.forEach(function (entry) {
+            var m = entry && typeof entry.id === 'string' && /^n(\d+)$/.exec(entry.id);
+            if (m) NOTIFY_SEQ = Math.max(NOTIFY_SEQ, Number(m[1]));
+          });
+        }
         if (typeof data.playerLoanRate === 'number') this.playerLoanRate = data.playerLoanRate;
         if (typeof data.playerDepositRate === 'number') this.playerDepositRate = data.playerDepositRate;
         if (Array.isArray(data.competitors) && data.competitors.length) this.competitors = data.competitors;
