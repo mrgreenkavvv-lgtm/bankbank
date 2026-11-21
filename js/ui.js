@@ -964,6 +964,13 @@
       '</div>';
   }
 
+  /* ---------- Версия сборки (есть на любой странице) ---------- */
+  function renderVersion() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="version"]'), function (node) {
+      if (node.textContent !== state.appVersion) node.textContent = state.appVersion;
+    });
+  }
+
   /* ---------- Бренд ---------- */
   var LOGO_COLORS = { gold: '#C8A04A', mint: '#3DDC97', blue: '#4DA3FF', violet: '#9B8CFF' };
 
@@ -1074,10 +1081,6 @@
         '</div>' +
       '</section>';
     }
-
-    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="version"]'), function (node) {
-      if (node.textContent !== state.appVersion) node.textContent = state.appVersion;
-    });
 
     var sw = document.querySelector('[data-ui="sw-status"]');
     if (sw) {
@@ -1941,6 +1944,7 @@
     renderKpis();
     renderChart();
     renderBrand();
+    renderVersion();
     renderBell();
     renderNotifications();
     renderProfile();
@@ -2314,6 +2318,37 @@
     });
   }
 
+  function bindUpdate() {
+    var btn = document.querySelector('[data-check-update]');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+      var toast = function (text) { if (typeof global.showToast === 'function') global.showToast(text); };
+
+      if (!navigator.serviceWorker) {
+        toast('Обновление недоступно в этом браузере');
+        return;
+      }
+
+      toast('Проверяем обновление…');
+
+      navigator.serviceWorker.getRegistration().then(function (reg) {
+        if (!reg) {
+          toast('Приложение не установлено — обновите страницу');
+          return;
+        }
+
+        reg.update().then(function () {
+          toast('Готово: перезагрузите страницу, если версия не изменилась');
+        }).catch(function () {
+          toast('Не удалось проверить обновление');
+        });
+      }).catch(function () {
+        toast('Не удалось проверить обновление');
+      });
+    });
+  }
+
   function bindBankrupt() {
     var rescue = document.querySelector('[data-cb-rescue]');
     if (rescue) {
@@ -2453,6 +2488,7 @@
     bindBranchButton();
     bindVipAndFilters();
     bindBankrupt();
+    bindUpdate();
     bindNegotiation();
     bindProfileReset();
     bindNotifications();
