@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.14.0';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.14.1';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -2236,19 +2236,6 @@
         defaults: defaults,
         profit: income - expense
       };
-
-      /* некомплект персонала: филиалов больше, чем менеджеров */
-      var shortfall = this.branches - this.managers.length;
-      if (shortfall > 0) {
-        var loss = shortfall * 50000;
-        this.capital -= loss;
-        this.log.push({
-          day: this.dayNumber,
-          type: 'warn',
-          text: '⚠ Некомплект персонала в филиале ' + (this.managers.length + 1) + ' · убыток ' + formatMoney(loss)
-        });
-        console.warn('[branch] некомплект · филиалов ' + this.branches + ', менеджеров ' + this.managers.length);
-      }
 
       /* казначейство: проценты по долгам, купоны */
       var treasury = this.investments;

@@ -651,7 +651,7 @@
         '<button class="btn btn-sm btn-ghost" type="button" data-reroll>Другие</button>' +
       '</div></div>' +
       '<div class="cand-list">' + rows + '</div>' +
-      '<div class="card-f">При найме сразу списывается первый месяц · на вас ' + state.managers.length + ' из ' + state.branches + ' филиалов</div>' +
+      '<div class="card-f">При найме сразу списывается первый месяц</div>' +
     '</section>';
   }
 
@@ -676,17 +676,14 @@
     if (sig === last.branchesPanel) return;
     last.branchesPanel = sig;
 
-    var shortfall = state.branches - state.managers.length;
     var stageBlocked = state.branches >= state.stageMaxBranches();
     var affordable = state.liquidFunds() >= state.branchPrice();
 
     var list = '';
     for (var i = 1; i <= state.branches; i += 1) {
-      var staffed = state.managers.length >= i;
       list += '<div class="frow" style="height:34px">' +
         '<span class="t">#' + i + '</span>' +
         '<span class="nm">Филиал ' + i + (i === 1 ? ' · Тверь' : '') + '</span>' +
-        '<span class="' + (staffed ? 'up' : 'down') + ' small">' + (staffed ? 'укомплектован' : 'некомплект') + '</span>' +
       '</div>';
     }
 
@@ -718,16 +715,10 @@
             '<div class="v" style="font-size:var(--fs-15)">' + state.queueLimit + '</div></div>' +
           '<div class="kpi" style="flex:1;border:0;background:var(--raised);padding:8px 12px"><span>Поток / день</span>' +
             '<div class="v" style="font-size:var(--fs-15)">' + state.clientsPerDay.toFixed(2).replace('.', ',') + '</div></div>' +
-          '<div class="kpi" style="flex:1;border:0;background:var(--raised);padding:8px 12px"><span>Персонал</span>' +
-            '<div class="v" style="font-size:var(--fs-15)' + (shortfall > 0 ? ';color:var(--coral)' : '') + '">' +
-            state.managers.length + ' / ' + state.branches + '</div></div>' +
+          '<div class="kpi" style="flex:1;border:0;background:var(--raised);padding:8px 12px"><span>Менеджеров</span>' +
+            '<div class="v" style="font-size:var(--fs-15)">' + state.managers.length + '</div></div>' +
         '</div>' +
         '<div style="margin-top:12px">' + list + '</div>' +
-        (shortfall > 0
-          ? '<div class="warn-note" style="margin-top:10px"><svg class="ic"><use href="#i-alert"/></svg>' +
-            '<div><b>Некомплект персонала</b><p>Филиалов ' + state.branches + ', менеджеров ' + state.managers.length +
-            '. Каждый месяц убыток ' + money(shortfall * 50000) + '.</p></div></div>'
-          : '') +
         '<button class="btn btn-primary btn-block" style="margin-top:12px" type="button" data-open-branch' +
           ((affordable && !stageBlocked) ? '' : ' disabled title="' + (stageBlocked ? 'Нужен следующий этап банка' : 'Не хватает денег') + '"') + '>' +
           (stageBlocked
