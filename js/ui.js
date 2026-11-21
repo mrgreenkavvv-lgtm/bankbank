@@ -52,10 +52,6 @@
     if (last.delta !== cls + value) {
       last.delta = cls + value;
 
-      document.querySelectorAll('[data-ui="cap-delta"]').forEach(function (node) {
-        node.className = 'tiny ' + cls;
-        node.textContent = value;
-      });
       document.querySelectorAll('[data-ui="kpi-delta"]').forEach(function (node) {
         node.className = 'd ' + (flat ? 'muted' : (up ? 'up' : 'down'));
         node.textContent = value + ' от старта';
@@ -67,8 +63,15 @@
   function renderLiquid() {
     var liquid = money(state.liquidFunds());
 
-    setText(document.querySelector('[data-ui="liquid"]'), liquid, 'liquid');
-    setText(document.querySelector('[data-ui="liquid-line"]'), 'Свободно: ' + liquid, 'liquid-line');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="liquid"]'), function (node) {
+      if (node.textContent !== liquid) node.textContent = liquid;
+    });
+
+    var freeLine = document.querySelector('[data-ui="kpi-free"]');
+    if (freeLine) {
+      var label = 'свободно ' + liquid;
+      if (freeLine.textContent !== label) freeLine.textContent = label;
+    }
 
     var loans = state.loansBody();
     var free = Math.max(0, state.liquidFunds());
@@ -174,7 +177,7 @@
 
   function bindBalance() {
     document.addEventListener('click', function (event) {
-      var el = event.target.closest && event.target.closest('[data-ui="capital"],[data-ui="liquid"],[data-ui="hud-bar"]');
+      var el = event.target.closest && event.target.closest('[data-ui="capital"],[data-ui="kpi-capital"],[data-ui="liquid"],[data-ui="hud-bar"]');
       if (!el) return;
       openBalance();
     });

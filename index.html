@@ -65,13 +65,8 @@
     </div>
 
     <div class="hud-stats">
-      <div class="hud-stat">
-        <span>Капитал</span>
-        <b class="num" data-ui="capital">8,42 млн ₽</b>
-        <span class="tiny num up" data-ui="cap-delta">▲ +0,9%</span>
-      </div>
-      <div class="hud-stat">
-        <span>Свободно</span>
+      <div class="hud-stat" title="Свободные деньги: можно выдать кредит или вернуть вклад">
+        <span>Доступно</span>
         <b class="num" data-ui="liquid">8,42 млн ₽</b>
       </div>
       <div class="hud-stat">
@@ -109,9 +104,8 @@
         </div>
       </div>
       <div class="hud-m-cap">
-        <span>Капитал</span>
-        <b class="num" data-ui="capital">8,42 млн ₽</b>
-        <span class="hud-m-sub" data-ui="liquid-line">Свободно: 8,42 млн ₽</span>
+        <span>Доступно</span>
+        <b class="num" data-ui="liquid">8,42 млн ₽</b>
       </div>
       <a class="iconbtn" href="notifications.html" aria-label="Уведомления"><svg class="ic"><use href="#i-bell"/></svg><i class="dot" data-ui="unread" hidden>0</i></a>
     </div>
@@ -181,7 +175,7 @@
         </header>
 
         <section class="kpis" aria-label="Ключевые показатели">
-          <div class="kpi"><span>Капитал</span><div class="v" data-ui="kpi-capital">8,42<small> млн ₽</small></div><div class="d up" data-ui="kpi-delta">▲ +0,9% от старта</div></div>
+          <div class="kpi"><span>Капитал</span><div class="v" data-ui="kpi-capital">8,42<small> млн ₽</small></div><div class="d up" data-ui="kpi-delta">▲ +0,9% от старта</div><div class="tiny num muted" data-ui="kpi-free">свободно —</div></div>
           <div class="kpi"><span>Прибыль / мес.</span><div class="v" data-ui="kpi-profit">0<small> ₽</small></div><div class="d" data-ui="kpi-profit-d">—</div></div>
           <div class="kpi"><span>Клиентов / день</span><div class="v" data-ui="kpi-clients">1,0</div><div class="d muted" data-ui="kpi-clients-note">поток по филиалам</div></div>
           <div class="kpi"><span>Ликвидность</span><div class="v" data-ui="kpi-liquid">—</div><div class="d muted">Н2 · норма ≥ 15%</div></div>
