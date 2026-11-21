@@ -69,6 +69,143 @@
 
     setText(document.querySelector('[data-ui="liquid"]'), liquid, 'liquid');
     setText(document.querySelector('[data-ui="liquid-line"]'), 'Свободно: ' + liquid, 'liquid-line');
+
+    var loans = state.loansBody();
+    var free = Math.max(0, state.liquidFunds());
+    var res = state.reserved || 0;
+    var total = Math.max(1, loans + free + res);
+    var low = free < total * 0.05;
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ui="liquid"]'), function (node) {
+      var cell = node.closest ? node.closest('.hud-stat, .hud-cell') : null;
+      if (!cell) return;
+
+      var bar = cell.querySelector('.hud-bar');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.className = 'hud-bar';
+        bar.setAttribute('data-ui', 'hud-bar');
+        cell.appendChild(bar);
+      }
+
+      bar.innerHTML =
+        '<i class="hb-loans" style="width:' + (loans / total * 100).toFixed(1) + '%"></i>' +
+        '<i class="hb-free' + (low ? ' is-low' : '') + '" style="width:' + (free / total * 100).toFixed(1) + '%"></i>' +
+        '<i class="hb-res" style="width:' + (res / total * 100).toFixed(1) + '%"></i>';
+
+      bar.title = 'в кредитах ' + money(loans) + ' · свободно ' + liquid + ' · в резерве ' + money(res);
+
+      if (!cell.querySelector('.hud-free-hint')) {
+        var hint = document.createElement('span');
+        hint.className = 'hud-free-hint tiny muted';
+        hint.textContent = 'можно выдать';
+        cell.appendChild(hint);
+      }
+    });
+  }
+
+  /* ---------- Баланс банка ---------- */
+  function balanceHtml() {
+    var loans = state.loansBody();
+    var bonds = state.bondsValue();
+    var fx = state.fxCost();
+    var free = state.cash();
+    var res = state.reserved || 0;
+    var dep = state.depositsBody();
+    var cb = (state.investments && state.investments.cbLoan) || 0;
+    var mbk = (state.investments && state.investments.mbkTaken && state.investments.mbkTaken.amount) || 0;
+
+    var assets = loans + bonds + fx + Math.max(0, free) + res;
+    var liab = dep + cb + mbk;
+
+    return '<div class="modal-head"><b>Баланс банка</b>' +
+        '<button class="iconbtn" type="button" data-balance-close aria-label="Закрыть">×</button></div>' +
+      '<div class="modal-body">' +
+        '<div class="bal-cols">' +
+          '<div><div class="bal-title">Активы</div>' +
+            '<div class="bal-row"><span>кредиты</span><b class="num">' + money(loans) + '</b></div>' +
+            '<div class="bal-row"><span>облигации</span><b class="num">' + money(bonds) + '</b></div>' +
+            '<div class="bal-row"><span>валюта</span><b class="num">' + money(fx) + '</b></div>' +
+            '<div class="bal-row"><span>свободные</span><b class="num">' + money(free) + '</b></div>' +
+            '<div class="bal-row"><span>резерв</span><b class="num">' + money(res) + '</b></div>' +
+          '</div>' +
+          '<div><div class="bal-title">Обязательства</div>' +
+            '<div class="bal-row"><span>вклады</span><b class="num">' + money(dep) + '</b></div>' +
+            '<div class="bal-row"><span>кредит ЦБ</span><b class="num">' + money(cb) + '</b></div>' +
+            '<div class="bal-row"><span>МБК взятый</span><b class="num">' + money(mbk) + '</b></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="bal-total">Активы ' + money(assets) + ' − обязательства ' + money(liab) +
+          ' = капитал ' + money(assets - liab) + '</div>' +
+        '<div class="small muted" style="margin-top:10px">Свободные деньги можно выдать сегодня. ' +
+          'Капитал — собственные средства: они уже вложены в кредиты и вернутся по мере погашения.</div>' +
+      '</div>';
+  }
+
+  function ensureBalanceModal() {
+    var modal = document.getElementById('balance-modal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'balance-modal';
+    modal.className = 'modal';
+    modal.setAttribute('hidden', 'hidden');
+    modal.innerHTML = '<div class="modal-card" role="dialog" aria-modal="true" aria-label="Баланс банка"></div>';
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal || (event.target.closest && event.target.closest('[data-balance-close]'))) {
+        modal.hidden = true;
+      }
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') modal.hidden = true;
+    });
+
+    return modal;
+  }
+
+  function openBalance() {
+    var modal = ensureBalanceModal();
+    modal.querySelector('.modal-card').innerHTML = balanceHtml();
+    modal.hidden = false;
+  }
+
+  function bindBalance() {
+    document.addEventListener('click', function (event) {
+      var el = event.target.closest && event.target.closest('[data-ui="capital"],[data-ui="liquid"],[data-ui="hud-bar"]');
+      if (!el) return;
+      openBalance();
+    });
+  }
+
+  /* ---------- Призыв нанять первого менеджера ---------- */
+  function renderManagerCta() {
+    var kpis = document.querySelector('.kpis');
+    if (!kpis) return;
+
+    var card = document.getElementById('hire-cta');
+    var need = !state.managers || state.managers.length === 0;
+
+    if (!need) {
+      if (card) card.hidden = true;
+      return;
+    }
+
+    if (!card) {
+      card = document.createElement('section');
+      card.id = 'hire-cta';
+      card.className = 'card hire-cta';
+      card.innerHTML = '<div class="card-b row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">' +
+        '<div><b>Нанять первого менеджера</b>' +
+          '<div class="small muted">Пока штат пуст, заявки разбираются только вручную.</div></div>' +
+        '<a class="btn btn-primary" href="manager.html">К кандидатам</a>' +
+      '</div>';
+      kpis.parentNode.insertBefore(card, kpis.nextSibling);
+    }
+
+    card.hidden = false;
   }
 
   /* ---------- Живой поток ---------- */
@@ -494,7 +631,23 @@
     if (!card) return;
 
     var m = state.managerById(state.activeManagerId);
-    if (!m) return;
+
+    if (!m) {
+      if (last.managerEmpty !== '1') {
+        last.managerEmpty = '1';
+        last.manager = null;
+      }
+      card.innerHTML = '<section class="card">' +
+        '<div class="card-h"><h2>В банке нет менеджеров</h2><div class="r">0</div></div>' +
+        '<div class="card-b">' +
+          '<div class="small muted">Пока штат пуст, заявки разбираются только вручную — по кнопкам в очереди. ' +
+          'Наймите первого менеджера, и он включит автопилот.</div>' +
+        '</div>' +
+      '</section>' + renderCandidates();
+      return;
+    }
+
+    last.managerEmpty = null;
 
     var market = Math.round((30000 + m.level * 2600) / 1000) * 1000;
     var diff = Math.round(((m.salary - market) / market) * 100);
@@ -800,6 +953,38 @@
     '</div>';
   }
 
+  /* состояние вкладки портфеля */
+  var pfState = { tab: 'loan', page: 1, sort: 'term', dir: 'asc', search: '' };
+
+  function pfAvgRate(list) {
+    var sum = 0, weight = 0;
+    list.forEach(function (x) { sum += x.rate * x.amount; weight += x.amount; });
+    return weight > 0 ? sum / weight : 0;
+  }
+
+  function pfAvgTerm(list) {
+    if (!list.length) return 0;
+    return list.reduce(function (a, x) { return a + x.monthsLeft; }, 0) / list.length;
+  }
+
+  function pfRows(list) {
+    var sorted = list.slice();
+    var dir = pfState.dir === 'asc' ? 1 : -1;
+
+    sorted.sort(function (a, b) {
+      if (pfState.sort === 'amount') return (a.amount - b.amount) * dir;
+      if (pfState.sort === 'rate') return (a.rate - b.rate) * dir;
+      return ((a.monthsLeft - b.monthsLeft)) * dir;
+    });
+
+    if (pfState.search) {
+      var q = pfState.search.toLowerCase();
+      sorted = sorted.filter(function (x) { return String(x.name).toLowerCase().indexOf(q) >= 0; });
+    }
+
+    return sorted;
+  }
+
   function renderPortfolio() {
     var box = document.querySelector('[data-ui="portfolio"]');
     if (!box) return;
@@ -807,15 +992,90 @@
     var loans = state.activeLoans || [];
     var deposits = state.activeDeposits || [];
 
-    var signature = loans.map(function (x) { return x.id + ':' + x.monthsLeft; }).join(',') +
-                    '#' + deposits.map(function (x) { return x.id + ':' + x.monthsLeft; }).join(',');
+    var signature = [pfState.tab, pfState.page, pfState.sort, pfState.dir, pfState.search,
+      loans.length, deposits.length, Math.round(state.loansBody()), Math.round(state.depositsBody())].join('|');
     if (signature === last.portfolio) return;
     last.portfolio = signature;
 
-    box.innerHTML = pfSection('Выданные кредиты', loans, 'loan') + pfSection('Принятые вклады', deposits, 'deposit');
+    var loansSum = state.loansBody();
+    var depSum = state.depositsBody();
+
+    /* вкладки портфеля */
+    var tabs = '<div class="row pf-tabs" style="gap:7px;flex-wrap:wrap">' +
+      '<button class="chip' + (pfState.tab === 'loan' ? ' is-on' : '') + '" type="button" data-pf-tab="loan">' +
+        'Кредиты · ' + loans.length + ' · ' + money(loansSum) + '</button>' +
+      '<button class="chip' + (pfState.tab === 'deposit' ? ' is-on' : '') + '" type="button" data-pf-tab="deposit">' +
+        'Вклады · ' + deposits.length + ' · ' + money(depSum) + '</button>' +
+    '</div>';
+
+    var isLoan = pfState.tab === 'loan';
+    var list = isLoan ? loans : deposits;
+
+    /* сводка */
+    var risk45 = list.filter(function (x) { return x.risk >= 4; }).length;
+    var soon = list.filter(function (x) { return x.monthsLeft <= 1; }).length;
+
+    var summary = '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">' +
+      '<div class="kpi" style="flex:1;min-width:130px;border:0;background:var(--raised);padding:8px 12px"><span>Сумма</span>' +
+        '<div class="v" style="font-size:var(--fs-15)">' + money(isLoan ? loansSum : depSum) + '</div></div>' +
+      '<div class="kpi" style="flex:1;min-width:130px;border:0;background:var(--raised);padding:8px 12px"><span>Средняя ставка</span>' +
+        '<div class="v" style="font-size:var(--fs-15)">' + rateLabel(Math.round(pfAvgRate(list) * 10) / 10) + '</div></div>' +
+      '<div class="kpi" style="flex:1;min-width:130px;border:0;background:var(--raised);padding:8px 12px"><span>Средний срок</span>' +
+        '<div class="v" style="font-size:var(--fs-15)">' + Math.round(pfAvgTerm(list)) + ' мес</div></div>' +
+      (isLoan
+        ? '<div class="kpi" style="flex:1;min-width:130px;border:0;background:var(--raised);padding:8px 12px"><span>Риск 4–5</span>' +
+            '<div class="v" style="font-size:var(--fs-15)">' + risk45 + '</div></div>'
+        : '<div class="kpi" style="flex:1;min-width:130px;border:0;background:var(--raised);padding:8px 12px"><span>Гасится ≤ 30 дней</span>' +
+            '<div class="v" style="font-size:var(--fs-15)">' + soon + '</div></div>') +
+    '</div>';
+
+    /* поиск и сортировка */
+    var controls = '<div class="row" style="gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">' +
+      '<input class="pf-input" type="search" placeholder="Поиск по имени" value="' + (pfState.search || '') + '" data-pf-search aria-label="Поиск по портфелю">' +
+      '<div class="row" style="gap:6px;flex-wrap:wrap">' +
+        ['term:Срок', 'amount:Сумма', 'rate:Ставка'].map(function (pair) {
+          var key = pair.split(':')[0];
+          var on = pfState.sort === key;
+          return '<button class="chip' + (on ? ' is-on' : '') + '" type="button" data-pf-sort="' + key + '">' +
+            pair.split(':')[1] + (on ? (pfState.dir === 'asc' ? ' ↑' : ' ↓') : '') + '</button>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+
+    /* таблица */
+    var rows = pfRows(list);
+    var pageSize = 50;
+    var shown = rows.slice(0, pfState.page * pageSize);
+
+    var head = '<div class="pf-table-head">' +
+      '<span>Клиент</span><span>Сумма</span><span>Ставка</span><span>Срок</span><span>Риск</span><span>Статус</span><span>День</span>' +
+    '</div>';
+
+    var body = shown.length
+      ? shown.map(function (x) {
+          var dots = '';
+          for (var i = 0; i < 5; i += 1) dots += i < x.risk ? '●' : '○';
+          return '<div class="pf-table-row">' +
+            '<span class="pf-c-name">' + x.name + '</span>' +
+            '<span class="num">' + money(x.amount) + '</span>' +
+            '<span class="num">' + rateLabel(x.rate) + '</span>' +
+            '<span class="num">' + x.monthsLeft + ' мес</span>' +
+            '<span class="pf-risk">' + dots + '</span>' +
+            '<span class="small ' + (x.risk >= 4 ? 'down' : 'muted') + '">' + (x.risk >= 4 ? 'риск' : 'в работе') + '</span>' +
+            '<span class="num small muted">' + (x.openedDay || '—') + '</span>' +
+          '</div>';
+        }).join('')
+      : '<div class="pf-empty muted">Пока пусто</div>';
+
+    var more = rows.length > shown.length
+      ? '<button class="btn btn-sm btn-block" style="margin-top:10px" type="button" data-pf-more>Показать ещё (' +
+          shown.length + ' из ' + rows.length + ')</button>'
+      : '';
+
+    box.innerHTML = tabs + summary + controls + head + body + more;
 
     var total = document.querySelector('[data-ui="pf-total"]');
-    if (total) total.textContent = money(loans.reduce(function (s2, x) { return s2 + x.amount; }, 0));
+    if (total) total.textContent = money(isLoan ? loansSum : depSum);
   }
 
   /* ---------- KPI дашборда: поток, ликвидность, счётчики дня ---------- */
@@ -1958,6 +2218,7 @@
     renderPortfolio();
     renderProfit();
     renderKpis();
+    renderManagerCta();
     renderChart();
     renderBrand();
     renderVersion();
@@ -2373,6 +2634,48 @@
     });
   }
 
+  function bindPortfolio() {
+    document.addEventListener('click', function (event) {
+      var tab = event.target.closest && event.target.closest('[data-pf-tab]');
+      if (tab) {
+        pfState.tab = tab.dataset.pfTab;
+        pfState.page = 1;
+        last.portfolio = null;
+        renderPortfolio();
+        return;
+      }
+
+      var sort = event.target.closest && event.target.closest('[data-pf-sort]');
+      if (sort) {
+        var key = sort.dataset.pfSort;
+        if (pfState.sort === key) pfState.dir = pfState.dir === 'asc' ? 'desc' : 'asc';
+        else { pfState.sort = key; pfState.dir = 'asc'; }
+        pfState.page = 1;
+        last.portfolio = null;
+        renderPortfolio();
+        return;
+      }
+
+      var more = event.target.closest && event.target.closest('[data-pf-more]');
+      if (more) {
+        pfState.page += 1;
+        last.portfolio = null;
+        renderPortfolio();
+      }
+    });
+
+    document.addEventListener('input', function (event) {
+      var search = event.target.closest && event.target.closest('[data-pf-search]');
+      if (!search) return;
+      pfState.search = search.value.trim();
+      pfState.page = 1;
+      last.portfolio = null;
+      renderPortfolio();
+      var again = document.querySelector('[data-pf-search]');
+      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+    });
+  }
+
   function bindBankrupt() {
     var rescue = document.querySelector('[data-cb-rescue]');
     if (rescue) {
@@ -2513,6 +2816,8 @@
     bindVipAndFilters();
     bindBankrupt();
     bindUpdate();
+    bindPortfolio();
+    bindBalance();
     bindNegotiation();
     bindProfileReset();
     bindNotifications();

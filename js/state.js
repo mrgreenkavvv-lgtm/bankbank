@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.14.3';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.15.0';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -1067,6 +1067,11 @@
       this.motivation = opts.motiv || 'honest';
       this.difficulty = opts.diff || 'normal';
 
+      /* новый банк начинается без персонала */
+      this.managers = [];
+      this.activeManagerId = null;
+      this.candidates = this.candidates || [];
+
       /* --- сброс всех модификаторов --- */
       b.flowMult = 1;
       b.depShareMult = 1;
@@ -1672,19 +1677,8 @@
     candidates: [],
 
     /* ---------- Менеджеры ---------- */
-    managers: [
-      {
-        id: 'm1',
-        name: 'Иванов Пётр',
-        level: 34,
-        skills: { analytics: 62, speed: 48, caution: 39 },
-        loyalty: 64,
-        salary: 40000,
-        autopilot: false,
-        progress: 0
-      }
-    ],
-    activeManagerId: 'm1',
+    managers: [],
+    activeManagerId: null,
 
     /* ---------- Портфель ---------- */
     activeLoans: [],
@@ -1984,6 +1978,7 @@
       this.awardBuffs(manager);
 
       this.managers.push(manager);
+      if (!this.activeManagerId) this.activeManagerId = manager.id;
       this.candidates.splice(idx, 1);
       this.ensureCandidates();
 
@@ -2480,6 +2475,7 @@
 
     /* ---------- Менеджеры ---------- */
     managerById: function (id) {
+      if (!this.managers || !this.managers.length) return null;
       for (var i = 0; i < this.managers.length; i += 1) {
         if (this.managers[i].id === id) return this.managers[i];
       }
@@ -2863,8 +2859,9 @@
         }
         this.burned = Number(data.burned) || 0;
         this.reserved = Number(data.reserved) || 0;
-        if (Array.isArray(data.managers) && data.managers.length) {
+        if (Array.isArray(data.managers)) {
           this.managers = data.managers;
+          if (!this.managers.length) this.activeManagerId = null;
           /* старые сейвы без потенциала — выдаём средний */
           this.managers.forEach(function (m) {
             if (!m.potentialMax) {

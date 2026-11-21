@@ -2275,3 +2275,128 @@ body, button, a, input, select, textarea,
   opacity: .45;
   cursor: not-allowed;
 }
+
+/* портфель: таблица */
+.pf-input {
+  flex: 1;
+  min-width: 160px;
+  padding: 7px 10px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--text);
+  font-size: var(--fs-12);
+}
+.pf-input:focus { outline: none; border-color: var(--gold); }
+
+.pf-table-head,
+.pf-table-row {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr .7fr .7fr .6fr .8fr .5fr;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+}
+.pf-table-head {
+  margin-top: 10px;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+.pf-table-row { border-bottom: 1px solid var(--border); font-size: var(--fs-12); }
+.pf-table-row:last-child { border-bottom: 0; }
+.pf-c-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-risk { letter-spacing: 1px; color: var(--text-3); font-size: 10px; }
+
+@media (max-width: 720px) {
+  .pf-table-head { display: none; }
+  .pf-table-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "name sum" "meta meta";
+    row-gap: 4px;
+  }
+  .pf-table-row > span:nth-child(1) { grid-area: name; }
+  .pf-table-row > span:nth-child(2) { grid-area: sum; text-align: right; }
+  .pf-table-row > span:nth-child(3),
+  .pf-table-row > span:nth-child(4),
+  .pf-table-row > span:nth-child(5),
+  .pf-table-row > span:nth-child(6),
+  .pf-table-row > span:nth-child(7) { grid-area: meta; display: inline; margin-right: 8px; }
+}
+
+/* HUD: полоска активов под «Свободно» */
+.hud-cell .hud-bar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+  background: var(--border);
+  cursor: pointer;
+}
+.hud-bar i { display: block; height: 100%; }
+.hb-loans { background: var(--blue); }
+.hb-free { background: var(--mint); }
+.hb-free.is-low { background: var(--coral); }
+.hb-res { background: var(--gold); }
+.hud-free-hint { display: block; margin-top: 3px; }
+
+/* модалка баланса */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(3, 6, 9, .72);
+}
+.modal[hidden] { display: none; }
+.modal-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-l);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-body { padding: 14px 16px 18px; }
+.bal-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.bal-title {
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+.bal-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: var(--fs-12);
+}
+.bal-total {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-13);
+  color: var(--gold);
+}
+@media (max-width: 720px) {
+  .modal { align-items: flex-end; padding: 0; }
+  .modal-card { max-width: none; border-radius: var(--r-l) var(--r-l) 0 0; }
+  .bal-cols { grid-template-columns: 1fr; }
+}
