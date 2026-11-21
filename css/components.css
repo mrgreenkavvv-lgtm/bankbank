@@ -2400,3 +2400,17 @@ body, button, a, input, select, textarea,
   .modal-card { max-width: none; border-radius: var(--r-l) var(--r-l) 0 0; }
   .bal-cols { grid-template-columns: 1fr; }
 }
+
+/* онбординг: настраиваемый режим */
+.ob-custom {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-m);
+  background: var(--panel);
+}
+.ob-custom-row { display: grid; gap: 6px; }
+.ob-custom-row input[type="range"] { flex: 1; min-width: 120px; }
+.ob-custom-row .small { display: flex; align-items: center; gap: 6px; color: var(--text-2); }

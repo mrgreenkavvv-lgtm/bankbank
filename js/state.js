@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.15.2';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.16.0';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -306,8 +306,20 @@
       };
     },
 
+    inspectionInterval: function () {
+      if (this.difficulty === 'sandbox' || (this.custom && this.custom.noInspect)) return 0;
+      if (this.difficulty === 'custom') return Math.max(30, Math.round((this.custom && this.custom.inspectDays) || 180));
+
+      var base = (this.bonuses && this.bonuses.inspectionDays) ||
+                 (this.stageInfo() && this.stageInfo().inspectDays) || 180;
+      var mult = { easy: 2, normal: 1, hardcore: 0.5 }[this.difficulty] || 1;
+
+      return Math.max(30, Math.round(base * mult));
+    },
+
     randomInspectionChance: function () {
       if (this.inspecting) return 0;
+      if (this.custom && (this.custom.noInspect || this.custom.noRandom)) return 0;
       if (this.difficulty === 'sandbox' || this.nextInspectionDay >= 900000) return 0;
       if (this.dayNumber < (this.randomCheckAfter || 0)) return 0;
 
@@ -347,11 +359,17 @@
       var h3 = ratios.h3;
 
       var h1Min = this.stageInfo().h1Min || 8;
+      var fineMultNow = (this.bonuses && this.bonuses.fineMult) || 1;
+
+      var rowFine = function (norm, fact) {
+        var d = Math.max(0, (norm - fact) / norm);
+        return Math.round(this.capital * (0.005 + 0.075 * d * d) * fineMultNow);
+      }.bind(this);
 
       var rows = [
-        { label: 'Н1 · достаточность капитала', fact: h1, min: h1Min, fine: 450000, ok: h1 >= h1Min },
-        { label: 'Н2 · мгновенная ликвидность', fact: h2, min: 15, fine: 320000, ok: h2 >= 15 },
-        { label: 'Н3 · текущая ликвидность', fact: h3, min: 50, fine: 200000, ok: h3 >= 50 }
+        { label: 'Н1 · достаточность капитала', fact: h1, min: h1Min, fine: rowFine(h1Min, h1), ok: h1 >= h1Min },
+        { label: 'Н2 · мгновенная ликвидность', fact: h2, min: 15, fine: rowFine(15, h2 > 900 ? 15 : h2), ok: h2 >= 15 },
+        { label: 'Н3 · текущая ликвидность', fact: h3, min: 50, fine: rowFine(50, h3 > 900 ? 50 : h3), ok: h3 >= 50 }
       ];
 
       var random = kind === 'random';
@@ -368,23 +386,24 @@
       var fineMult = (this.bonuses && this.bonuses.fineMult) || 1;
       var fine;
 
-      if (random) {
-        /* внезапная: 0,2% за нарушение, +0,15% за каждое следующее, максимум 0,5% */
-        fine = violations > 0
-          ? Math.round(this.capital * Math.min(0.005, 0.002 + 0.0015 * (violations - 1)))
-          : 0;
-      } else {
-        var base = rows.reduce(function (sum, r) { return sum + (r.ok ? 0 : r.fine); }, 0);
-        fine = base > 0
-          ? Math.round(Math.max(base, this.capital * 0.005) * fineMult)
-          : 0;
-        fine = Math.min(fine, Math.round(this.capital * 0.02));
+      var totalRowFine = rows.reduce(function (sum, r) { return sum + (r.ok ? 0 : r.fine); }, 0);
+      fine = random ? Math.round(totalRowFine * 0.5) : Math.round(totalRowFine);
+
+      /* глубокое нарушение Н1 в плановой проверке: −6 репутации и предписание */
+      var h1dev = Math.max(0, (h1Min - h1) / h1Min);
+      var deep = !random && h1dev > 0.5;
+      if (deep) {
+        if (this.deepViolation) {
+          this.licenseRevoked = true;
+        }
+        this.deepViolation = true;
       }
 
       this.inspection = {
         day: this.dayNumber,
         rows: rows,
         kind: random ? 'random' : 'scheduled',
+        deep: deep,
         fine: fine,
         loansTotal: loansTotal,
         depositsTotal: depositsTotal,
@@ -407,8 +426,8 @@
         return this.inspection;
       }
 
-      this.nextInspectionDay = this.dayNumber +
-        ((this.bonuses && this.bonuses.inspectionDays) || this.stageInfo().inspectDays || 180);
+      var interval = this.inspectionInterval();
+      this.nextInspectionDay = interval ? this.dayNumber + interval : 999999;
       this.paused = true;
 
       this.log.push({
@@ -466,7 +485,7 @@
 
       if (mode === 'accept') {
         result.fine = insp.fine;
-        result.reputation = insp.kind === 'random' ? 2 : 4;
+        result.reputation = insp.kind === 'random' ? 2 : (insp.deep ? 6 : 4);
         result.ok = true;
         insp.result = 'accept';
         this.log.push({
@@ -497,6 +516,18 @@
 
       this.capital -= result.fine;
       this.reputation = Math.max(0, this.reputation - result.reputation);
+
+      if (this.licenseRevoked && !this.bankrupt) {
+        this.licenseRevoked = false;
+        this.bankrupt = true;
+        this.paused = true;
+        this.alert = 'bankrupt';
+        this.log.push({
+          day: this.dayNumber,
+          type: 'bankrupt',
+          text: '⛔ ЦБ отозвал лицензию: повторное глубокое нарушение Н1'
+        });
+      }
 
       insp.resolved = true;
       insp.resolvedFine = result.fine;
@@ -1138,6 +1169,17 @@
       this.motivation = opts.motiv || 'honest';
       this.difficulty = opts.diff || 'normal';
 
+      if (opts.custom && typeof opts.custom === 'object') {
+        this.custom = {
+          capital: Number(opts.custom.capital) || 8420000,
+          inspectDays: Number(opts.custom.inspectDays) || 180,
+          fineMult: typeof opts.custom.fineMult === 'number' ? opts.custom.fineMult : 1,
+          noInspect: !!opts.custom.noInspect,
+          noRandom: !!opts.custom.noRandom
+        };
+      }
+      this.deepViolation = false;
+
       /* новый банк начинается без персонала */
       this.managers = [];
       this.activeManagerId = null;
@@ -1255,11 +1297,21 @@
         base = 50000000;
         interval = 0;
         difficultyFine = 0;
+      } else if (this.difficulty === 'easy') {
+        base = 30000000;
+        interval = 360;
+        difficultyFine = 0.7;
+      } else if (this.difficulty === 'custom') {
+        var c = this.custom || {};
+        base = Math.max(3000000, Math.min(100000000, Number(c.capital) || 8420000));
+        interval = c.noInspect ? 0 : Math.max(30, Math.round(Number(c.inspectDays) || 180));
+        difficultyFine = Math.max(0, Math.min(3, Number(c.fineMult)));
+        if (difficultyFine === undefined || isNaN(difficultyFine)) difficultyFine = 1;
       }
 
       b.fineMult *= difficultyFine;
 
-      if (interval > 0 && b.inspectionDays > 0) {
+      if (interval > 0 && b.inspectionDays > 0 && this.difficulty !== 'custom' && this.difficulty !== 'easy') {
         interval = Math.min(interval, b.inspectionDays);
       }
 
@@ -1283,7 +1335,9 @@
 
       this.dayNumber = 41;
       this.elapsedDays = 0;
-      this.nextInspectionDay = interval ? this.dayNumber + interval : 999999;
+      this.nextInspectionDay = this.inspectionInterval()
+        ? this.dayNumber + this.inspectionInterval()
+        : 999999;
       this.prevCapital = this.capital;
 
       this.recalcFlow();
@@ -1771,6 +1825,8 @@
     inspection: null,
     inspectionWarned: false,
     randomCheckAfter: 0,
+    custom: { capital: 8420000, inspectDays: 180, fineMult: 1, noInspect: false, noRandom: false },
+    deepViolation: false,
     clientIntake: 'all',
 
     /* ---------- Деньги в обороте ---------- */
@@ -2764,20 +2820,6 @@
 
       var client = this.queue[index];
 
-      /* достаточность капитала: портфель не может расти быстрее собственных средств */
-      if (client.type === 'loan') {
-        var cap = Math.max(0, this.capital) * 8;
-        if (this.loansBody() + client.amount > cap) {
-          return {
-            ok: false,
-            error: 'capital',
-            client: client,
-            need: Math.round(this.loansBody() + client.amount - cap),
-            available: Math.round(cap)
-          };
-        }
-      }
-
       /* кредит нельзя выдать, если свободных денег не хватает */
       if (client.type === 'loan' && this.liquidFunds() < client.amount) {
         console.warn('[state] отказ движка: нужно ' + formatMoney(client.amount) +
@@ -2896,6 +2938,8 @@
           incidents: this.incidents,
           activeManagerId: this.activeManagerId,
           notifySeq: NOTIFY_SEQ,
+          custom: this.custom,
+          deepViolation: this.deepViolation,
           inspectionWarned: this.inspectionWarned,
           randomCheckAfter: this.randomCheckAfter,
           clientIntake: this.clientIntake,
@@ -2984,6 +3028,17 @@
         if (typeof data.reputation === 'number') this.reputation = data.reputation;
         if (Array.isArray(data.capitalHistory)) this.capitalHistory = data.capitalHistory.slice(-90);
         if (data.today && typeof data.today === 'object') this.today = data.today;
+
+        if (data.custom && typeof data.custom === 'object') {
+          this.custom = {
+            capital: Number(data.custom.capital) || 8420000,
+            inspectDays: Number(data.custom.inspectDays) || 180,
+            fineMult: typeof data.custom.fineMult === 'number' ? data.custom.fineMult : 1,
+            noInspect: !!data.custom.noInspect,
+            noRandom: !!data.custom.noRandom
+          };
+        }
+        if (typeof data.deepViolation === 'boolean') this.deepViolation = data.deepViolation;
 
         if (typeof data.inspectionWarned === 'boolean') this.inspectionWarned = data.inspectionWarned;
         if (Number(data.randomCheckAfter)) this.randomCheckAfter = Number(data.randomCheckAfter);
