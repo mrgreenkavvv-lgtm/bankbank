@@ -677,7 +677,8 @@
     last.branchesPanel = sig;
 
     var shortfall = state.branches - state.managers.length;
-    var affordable = state.capital >= state.branchCost;
+    var stageBlocked = state.branches >= state.stageMaxBranches();
+    var affordable = state.liquidFunds() >= state.branchPrice();
 
     var list = '';
     for (var i = 1; i <= state.branches; i += 1) {
@@ -728,8 +729,10 @@
             '. Каждый месяц убыток ' + money(shortfall * 50000) + '.</p></div></div>'
           : '') +
         '<button class="btn btn-primary btn-block" style="margin-top:12px" type="button" data-open-branch' +
-          (affordable ? '' : ' disabled title="Не хватает денег"') + '>' +
-          'Открыть филиал · ' + money(state.branchCost) + '</button>' +
+          ((affordable && !stageBlocked) ? '' : ' disabled title="' + (stageBlocked ? 'Нужен следующий этап банка' : 'Не хватает денег') + '"') + '>' +
+          (stageBlocked
+            ? 'Лимит этапа · нужен «' + (state.nextStage() ? state.nextStage().name : 'следующий этап') + '»'
+            : 'Открыть филиал · ' + money(state.branchPrice())) + '</button>' +
       '</div>' +
     '</section>';
   }
