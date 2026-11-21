@@ -25,53 +25,7 @@
     }, 2200);
   }
 
-  /* ---------- Скорость и пауза ---------- */
-  function initSpeed() {
-    /* на дашборде скоростью и паузой управляет движок (engine.js) */
-    if (window.GameEngine) return;
-    var bars = document.querySelectorAll('.speed');
-    var stored = localStorage.getItem('bank-speed') || '1';
-    var paused = localStorage.getItem('bank-paused') === '1';
-
-    bars.forEach(function (bar) {
-      bar.querySelectorAll('button[data-speed]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          stored = btn.dataset.speed;
-          localStorage.setItem('bank-speed', stored);
-          paused = false;
-          localStorage.setItem('bank-paused', '0');
-          document.body.classList.remove('is-paused');
-          syncSpeed();
-        });
-      });
-      var pauseBtn = bar.querySelector('button[data-pause]');
-      if (pauseBtn) {
-        pauseBtn.addEventListener('click', function () {
-          paused = !paused;
-          localStorage.setItem('bank-paused', paused ? '1' : '0');
-          document.body.classList.toggle('is-paused', paused);
-          syncSpeed();
-          toast(paused ? 'Пауза' : 'Игра продолжается · ×' + stored);
-        });
-      }
-    });
-
-    function syncSpeed() {
-      bars.forEach(function (bar) {
-        bar.querySelectorAll('button[data-speed]').forEach(function (btn) {
-          btn.classList.toggle('is-on', !paused && btn.dataset.speed === stored);
-        });
-        var p = bar.querySelector('button[data-pause]');
-        if (p) {
-          p.classList.toggle('is-on', paused);
-          p.setAttribute('aria-pressed', paused ? 'true' : 'false');
-        }
-      });
-    }
-
-    document.body.classList.toggle('is-paused', paused);
-    syncSpeed();
-  }
+  /* ---------- Скорость и пауза: управляет engine.js на всех страницах ---------- */
 
   /* ---------- Меню «Ещё» ---------- */
   function initMenus() {
@@ -466,8 +420,7 @@
   /* тост доступен другим модулям (ui.js) */
   window.showToast = toast;
 
-  document.addEventListener('DOMContentLoaded', function () {    initSpeed();
-    initMenus();
+  document.addEventListener('DOMContentLoaded', function () {        initMenus();
     initStubs();
     initDecisions();
     initRanges();

@@ -808,14 +808,90 @@
     if (total) total.textContent = money(loans.reduce(function (s2, x) { return s2 + x.amount; }, 0));
   }
 
+  /* ---------- KPI дашборда: поток, ликвидность, счётчики дня ---------- */
+  function renderKpis() {
+    var clients = document.querySelector('[data-ui="kpi-clients"]');
+    if (clients) {
+      var flow = String(state.clientsPerDay).replace('.', ',');
+      if (clients.textContent !== flow) clients.textContent = flow;
+    }
+
+    var liquid = document.querySelector('[data-ui="kpi-liquid"]');
+    if (liquid) {
+      var h2 = state.computeRatios().h2;
+      var text = h2 > 900 ? '—' : Math.round(h2) + ' %';
+      if (liquid.textContent !== text) liquid.textContent = text;
+    }
+
+    var flowToday = document.querySelector('[data-ui="flow-today"]');
+    if (flowToday) {
+      var t = state.today || { clients: 0 };
+      var label = t.clients + ' за день';
+      if (flowToday.textContent !== label) flowToday.textContent = label;
+    }
+  }
+
+  /* ---------- F4: живой график капитала ---------- */
+  function renderChart() {
+    var line = document.querySelector('[data-ui="chart-line"]');
+    var area = document.querySelector('[data-ui="chart-area"]');
+    if (!line || !area) return;
+
+    var hist = (state.capitalHistory || []).slice(-90);
+    if (hist.length < 2) {
+      hist = [{ day: 0, capital: state.capital }, { day: 1, capital: state.capital }];
+    }
+
+    var vals = hist.map(function (p) { return p.capital; });
+    var min = Math.min.apply(null, vals);
+    var max = Math.max.apply(null, vals);
+    if (max - min < 1) { max = min + 1; }
+
+    var pts = vals.map(function (v, i) {
+      var x = 45 + (i / (vals.length - 1)) * 900;
+      var y = 200 - ((v - min) / (max - min)) * 150;
+      return Math.round(x) + ',' + Math.round(y);
+    });
+
+    var sig = pts.join(' ');
+    if (last.chart === sig) return;
+    last.chart = sig;
+
+    line.setAttribute('d', 'M' + pts.join(' '));
+    area.setAttribute('d', 'M' + pts.join(' ') + ' 945,220 45,220 Z');
+
+    var dots = document.querySelectorAll('[data-ui="chart-dot"], [data-ui="chart-dot-halo"]');
+    var lastPt = pts[pts.length - 1].split(',');
+    Array.prototype.forEach.call(dots, function (c) {
+      c.setAttribute('cx', lastPt[0]);
+      c.setAttribute('cy', lastPt[1]);
+    });
+
+    var forecast = document.querySelector('[data-ui="chart-forecast"]');
+    if (forecast) {
+      forecast.setAttribute('d', 'M' + lastPt[0] + ',' + lastPt[1] + ' 993,' +
+        Math.max(30, Number(lastPt[1]) - 24));
+    }
+
+    var labels = document.querySelector('[data-ui="chart-labels"]');
+    if (labels && labels.children.length === 4) {
+      var steps = [max, max - (max - min) / 3, max - 2 * (max - min) / 3, min];
+      for (var i = 0; i < 4; i += 1) {
+        var v = steps[i];
+        var txt = v >= 1e6 ? (v / 1e6).toFixed(1).replace('.', ',') : Math.round(v / 1000) + 'к';
+        labels.children[i].textContent = txt;
+      }
+    }
+  }
+
   /* ---------- Прибыль в месяц ---------- */
   function renderProfit() {
     var value = document.querySelector('[data-ui="kpi-profit"]');
     if (!value) return;
 
-    var income = state.monthlyIncome();
-    var expense = state.monthlyExpense();
-    var profit = income - expense;
+    var profit = state.profit30();
+    var income = Math.max(0, profit);
+    var expense = Math.max(0, -profit);
 
     var parts = global.formatMoneyParts(profit);
     var html = parts.num + '<small>' + parts.unit + '</small>';
@@ -829,7 +905,9 @@
       var sig = income + '|' + expense;
       if (last.profitNote !== sig) {
         last.profitNote = sig;
-        note.innerHTML = '<span class="up">+' + money(income) + '</span> · <span class="down">−' + money(expense) + '</span>';
+        note.innerHTML = profit >= 0
+          ? '<span class="up">+' + money(profit) + ' за 30 дней</span>'
+          : '<span class="down">−' + money(-profit) + ' за 30 дней</span>';
       }
     }
   }
@@ -1302,7 +1380,7 @@
     if (!list) return;
 
     var sub = document.querySelector('[data-ui="stocks-sub"]');
-    if (sub) setText(sub, 'свободно ' + money(state.capital) + ' · комиссия 0,3%', 'stocksSub');
+    if (sub) setText(sub, 'свободно ' + money(state.liquidFunds()) + ' · комиссия 0,3%', 'stocksSub');
 
     var myLoan = document.querySelector('[data-ui="my-loan"]');
     if (myLoan) setText(myLoan, rateLabel(state.playerLoanRate), 'myLoan');
@@ -1811,6 +1889,12 @@
       if (node.textContent !== stageText) node.textContent = stageText;
     });
 
+    if (state.inspecting && state.inspection && !state.inspection.resolved &&
+        global.location.pathname.indexOf('cbr.html') < 0) {
+      global.location.replace('cbr.html');
+      return;
+    }
+
     if (document.documentElement.dataset.stage !== String(state.bankStage)) {
       document.documentElement.dataset.stage = String(state.bankStage);
     }
@@ -1835,6 +1919,8 @@
     renderAutopilot();
     renderPortfolio();
     renderProfit();
+    renderKpis();
+    renderChart();
     renderBrand();
     renderBell();
     renderNotifications();
@@ -2181,6 +2267,40 @@
     });
   }
 
+  function bindBankrupt() {
+    var rescue = document.querySelector('[data-cb-rescue]');
+    if (rescue) {
+      rescue.addEventListener('click', function () {
+        var need = Math.max(0, -state.capital) + Math.max(0, -state.cash()) + 300000;
+        var left = Math.max(0, state.cbLoanLimit() - state.investments.cbLoan);
+        var amount = Math.min(need, left);
+
+        if (amount <= 0) {
+          if (global.showToast) global.showToast('Лимит кредита ЦБ исчерпан — нужен дефолт');
+          return;
+        }
+
+        state.takeCBLoan(amount);
+        state.bankrupt = false;
+        state.alert = null;
+        state.paused = false;
+        state.save();
+        render();
+        if (global.showToast) global.showToast('Кредит ЦБ ' + money(amount) + ' — банк спасён');
+      });
+    }
+
+    var dflt = document.querySelector('[data-default-now]');
+    if (dflt) {
+      dflt.addEventListener('click', function () {
+        if (!global.confirm('Объявить дефолт? Прогресс будет потерян.')) return;
+        try { global.localStorage.removeItem('bank-save'); } catch (e) {}
+        if (state.reset) state.reset();
+        global.location.href = 'onboarding.html';
+      });
+    }
+  }
+
   function bindStage() {
     document.addEventListener('click', function (event) {
       var btn = event.target.closest && event.target.closest('[data-stage-up]');
@@ -2285,6 +2405,7 @@
     bindStage();
     bindBranchButton();
     bindVipAndFilters();
+    bindBankrupt();
     bindNegotiation();
     bindProfileReset();
     bindNotifications();

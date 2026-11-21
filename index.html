@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Банк «Восток» — Обзор</title>
 <meta name="theme-color" content="#0A0E13">
 <meta name="description" content="Прототип интерфейса экономической игры «Симулятор банка»">
@@ -160,8 +160,8 @@
             Возьмите кредит ЦБ или объявите дефолт — игра на паузе.
           </div>
           <div class="actions">
-            <button class="btn btn-sm" type="button" data-soon>Кредит ЦБ</button>
-            <button class="btn btn-sm btn-no" type="button" data-soon>Дефолт</button>
+            <button class="btn btn-sm" type="button" data-cb-rescue>Кредит ЦБ</button>
+            <button class="btn btn-sm btn-no" type="button" data-default-now>Дефолт</button>
             <button class="btn btn-sm" type="button" data-restart>Начать заново</button>
           </div>
         </div>
@@ -183,9 +183,8 @@
         <section class="kpis" aria-label="Ключевые показатели">
           <div class="kpi"><span>Капитал</span><div class="v" data-ui="kpi-capital">8,42<small> млн ₽</small></div><div class="d up" data-ui="kpi-delta">▲ +0,9% от старта</div></div>
           <div class="kpi"><span>Прибыль / мес.</span><div class="v" data-ui="kpi-profit">0<small> ₽</small></div><div class="d" data-ui="kpi-profit-d">—</div></div>
-          <div class="kpi"><span>Клиентов / день</span><div class="v">126</div><div class="d down">▼ −3 ср. неделя</div></div>
-          <div class="kpi"><span>Просрочка</span><div class="v">2,1<small> %</small></div><div class="d down">▲ +0,2 п.п.</div></div>
-          <div class="kpi"><span>Ликвидность</span><div class="v">41<small> %</small></div><div class="d muted">норма ≥ 15%</div></div>
+          <div class="kpi"><span>Клиентов / день</span><div class="v" data-ui="kpi-clients">1,0</div><div class="d muted" data-ui="kpi-clients-note">поток по филиалам</div></div>
+          <div class="kpi"><span>Ликвидность</span><div class="v" data-ui="kpi-liquid">—</div><div class="d muted">Н2 · норма ≥ 15%</div></div>
           <div class="kpi"><span>Филиалы</span><div class="v" data-ui="kpi-branches">1</div><div class="d muted" data-ui="kpi-branches-note">очередь до 15</div></div>
         </section>
 
@@ -219,18 +218,20 @@
                   <line x1="45" y1="195" x2="990" y2="195"/>
                 </g>
                 <g style="fill:var(--text-3);font:10px var(--font-mono)">
-                  <text x="2" y="48">9,0</text><text x="2" y="98">8,0</text>
-                  <text x="2" y="148">7,0</text><text x="2" y="198">6,0</text>
+                  <g data-ui="chart-labels">
+                    <text x="2" y="48">9,0</text><text x="2" y="98">8,0</text>
+                    <text x="2" y="148">7,0</text><text x="2" y="198">6,0</text>
+                  </g>
                 </g>
-                <path style="fill:url(#area);stroke:none"
+                <path data-ui="chart-area" style="fill:url(#area);stroke:none"
                       d="M45,196 70,190 95,193 120,184 145,188 170,176 195,181 220,166 245,171 270,158 295,162 320,149 345,154 370,140 395,145 420,133 445,138 470,126 495,130 520,118 545,123 570,112 595,116 620,104 645,108 670,98 695,102 720,93 745,96 770,88 795,91 820,84 845,87 870,81 895,84 920,79 945,76 945,220 45,220 Z"/>
-                <path style="stroke:var(--gold);fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round"
+                <path data-ui="chart-line" style="stroke:var(--gold);fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round"
                       d="M45,196 70,190 95,193 120,184 145,188 170,176 195,181 220,166 245,171 270,158 295,162 320,149 345,154 370,140 395,145 420,133 445,138 470,126 495,130 520,118 545,123 570,112 595,116 620,104 645,108 670,98 695,102 720,93 745,96 770,88 795,91 820,84 845,87 870,81 895,84 920,79 945,76"/>
                 <line style="stroke:var(--border-strong)" stroke-dasharray="3 4" x1="945" y1="30" x2="945" y2="215"/>
                 <text style="fill:var(--text-3);font:9.5px var(--font-ui)" x="908" y="24">сегодня</text>
-                <path style="stroke:var(--gold);stroke-width:2;stroke-dasharray:4 4;fill:none;opacity:.85" d="M945,76 993,52"/>
-                <circle style="fill:var(--gold)" cx="945" cy="76" r="4.5"/>
-                <circle style="fill:none;stroke:var(--gold);opacity:.32" cx="945" cy="76" r="9.5"/>
+                <path data-ui="chart-forecast" style="stroke:var(--gold);stroke-width:2;stroke-dasharray:4 4;fill:none;opacity:.85" d="M945,76 993,52"/>
+                <circle data-ui="chart-dot" style="fill:var(--gold)" cx="945" cy="76" r="4.5"/>
+                <circle data-ui="chart-dot-halo" style="fill:none;stroke:var(--gold);opacity:.32" cx="945" cy="76" r="9.5"/>
               </svg>
             </div>
             <div class="card-f">
@@ -244,7 +245,7 @@
 
           <!-- Живой поток -->
           <section class="card area-flow">
-            <div class="card-h"><h2>Живой поток</h2><div class="r">126 за день</div></div>
+            <div class="card-h"><h2>Живой поток</h2><div class="r" data-ui="flow-today">0 за день</div></div>
                         <div class="card-b" style="padding:4px 14px" data-ui="flow"></div>
           </section>
 

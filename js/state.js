@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.12.0';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.13.0';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -219,6 +219,10 @@
     dayLength: 30,
     speed: 1,
     paused: false,
+
+    /* история капитала для графика: до 90 точек */
+    capitalHistory: [],
+    today: { day: 0, clients: 0, approved: 0, auto: 0 },
 
     /* ---------- Регулятор ---------- */
     /* упрощённые нормативы: одни и те же цифры на дашборде и в проверке */
@@ -2299,6 +2303,14 @@
       this.elapsedDays += 1;
       this.dayNumber = this.startDayNumber + this.elapsedDays;
 
+      if (this.today.day !== this.dayNumber) {
+        this.today = { day: this.dayNumber, clients: 0, approved: 0, auto: 0 };
+      }
+
+      if (!Array.isArray(this.capitalHistory)) this.capitalHistory = [];
+      this.capitalHistory.push({ day: this.dayNumber, capital: Math.round(this.capital) });
+      if (this.capitalHistory.length > 90) this.capitalHistory.shift();
+
       var before = this.capital;
 
       if (this.elapsedDays % this.salaryEveryDays === 0) {
@@ -2412,7 +2424,10 @@
           if (!next) { manager.progress = 0; break; }
 
           var result = self.autopilotDecide(manager, next);
-          if (result) results.push(result);
+          if (result) {
+            results.push(result);
+            if (self.today.day === self.dayNumber) self.today.auto += 1;
+          }
         }
       });
 
@@ -2451,6 +2466,18 @@
     },
 
     /* ---------- Клиенты ---------- */
+    /* прибыль за последние 30 дней по истории капитала */
+    profit30: function () {
+      var h = this.capitalHistory || [];
+      if (h.length < 2) return 0;
+      var cutoff = this.dayNumber - 30;
+      var past = h[0].capital;
+      for (var i = 0; i < h.length; i += 1) {
+        if (h[i].day <= cutoff) past = h[i].capital;
+      }
+      return this.capital - past;
+    },
+
     spawnClient: function () {
       /* привлекательность наших условий: конкуренты переманивают клиентов */
       var adv = this.rateAdvantage();
@@ -2592,6 +2619,8 @@
         console.log('[state] принят вклад · ' + client.name + ' · +' + formatMoney(client.amount));
       }
 
+      if (this.today.day === this.dayNumber) this.today.approved += 1;
+
       this.checkCapital();
       this.save();
       return { ok: true, client: client };
@@ -2669,6 +2698,8 @@
           incidents: this.incidents,
           activeManagerId: this.activeManagerId,
           notifySeq: NOTIFY_SEQ,
+          capitalHistory: this.capitalHistory,
+          today: this.today,
           playerLoanRate: this.playerLoanRate,
           playerDepositRate: this.playerDepositRate,
           competitors: this.competitors,
@@ -2749,6 +2780,9 @@
         if (Array.isArray(data.loans)) this.activeLoans = data.loans;
         if (Array.isArray(data.deposits)) this.activeDeposits = data.deposits;
         if (typeof data.reputation === 'number') this.reputation = data.reputation;
+        if (Array.isArray(data.capitalHistory)) this.capitalHistory = data.capitalHistory.slice(-90);
+        if (data.today && typeof data.today === 'object') this.today = data.today;
+
         if (typeof data.activeManagerId === 'string') this.activeManagerId = data.activeManagerId;
         if (Number(data.notifySeq)) NOTIFY_SEQ = Math.max(NOTIFY_SEQ, Number(data.notifySeq));
 
