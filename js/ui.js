@@ -672,12 +672,28 @@
     var box = document.querySelector('[data-ui="branches-panel"]');
     if (!box) return;
 
-    var sig = [state.branches, state.queueLimit, state.clientsPerDay, state.managers.length, Math.round(state.capital)].join('|');
+    var sig = [
+      state.branches, state.queueLimit, state.clientsPerDay,
+      state.managers.length, state.bankStage, state.stageMaxBranches(),
+      Math.round(state.liquidFunds()), state.branchPrice()
+    ].join('|');
     if (sig === last.branchesPanel) return;
     last.branchesPanel = sig;
 
     var stageBlocked = state.branches >= state.stageMaxBranches();
-    var affordable = state.liquidFunds() >= state.branchPrice();
+    var price = state.branchPrice();
+    var free = state.liquidFunds();
+    var affordable = free >= price;
+
+    var blockReason = '';
+    if (stageBlocked) {
+      var nxtStage = state.nextStage();
+      blockReason = 'Лимит «' + state.stageName() + '» — ' + state.stageMaxBranches() +
+        ' филиала. Нужен переход на «' + (nxtStage ? nxtStage.name : 'следующий этап') + '»';
+    } else if (!affordable) {
+      blockReason = 'Не хватает ' + money(price - free) + ' — нужно ' + money(price) +
+        ', свободно ' + money(free);
+    }
 
     var list = '';
     for (var i = 1; i <= state.branches; i += 1) {
@@ -719,11 +735,11 @@
             '<div class="v" style="font-size:var(--fs-15)">' + state.managers.length + '</div></div>' +
         '</div>' +
         '<div style="margin-top:12px">' + list + '</div>' +
-        '<button class="btn btn-primary btn-block" style="margin-top:12px" type="button" data-open-branch' +
-          ((affordable && !stageBlocked) ? '' : ' disabled title="' + (stageBlocked ? 'Нужен следующий этап банка' : 'Не хватает денег') + '"') + '>' +
-          (stageBlocked
-            ? 'Лимит этапа · нужен «' + (state.nextStage() ? state.nextStage().name : 'следующий этап') + '»'
-            : 'Открыть филиал · ' + money(state.branchPrice())) + '</button>' +
+        (blockReason
+          ? '<div class="small ' + (stageBlocked ? 'muted' : 'down') + '" style="margin-top:12px">' + blockReason + '</div>'
+          : '') +
+        '<button class="btn btn-primary btn-block" style="margin-top:8px" type="button" data-open-branch>' +
+          'Открыть филиал · ' + money(price) + '</button>' +
       '</div>' +
     '</section>';
   }
@@ -2253,12 +2269,20 @@
   function bindBranchButton() {
     document.addEventListener('click', function (event) {
       var btn = event.target.closest && event.target.closest('[data-open-branch]');
-      if (!btn || btn.disabled) return;
+      if (!btn) return;
 
       var res = state.openBranch();
       if (!res.ok) {
-        if (typeof global.showToast === 'function') {
-          global.showToast('Не хватает: нужно ' + money(res.need || state.branchCost));
+        var toast = function (text) { if (typeof global.showToast === 'function') global.showToast(text); };
+
+        if (res.error === 'stage') {
+          toast('Лимит «' + state.stageName() + '» — ' + state.stageMaxBranches() +
+            ' филиала. Нужен переход на «' + (res.need || 'следующий этап') + '»');
+        } else if (res.error === 'money') {
+          toast('Не хватает ' + money((res.need || 0) - (res.available || 0)) +
+            ' — нужно ' + money(res.need || 0) + ', свободно ' + money(res.available || 0));
+        } else {
+          toast('Открыть филиал не удалось');
         }
         return;
       }
