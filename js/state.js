@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.16.0';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.16.1';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -297,12 +297,16 @@
       var loansTotal = this.activeLoans.reduce(function (sum, l) { return sum + l.amount; }, 0);
       var depositsTotal = this.activeDeposits.reduce(function (sum, d) { return sum + d.amount; }, 0);
 
+      /* резерв — ликвидный актив: в Н2/Н3 входит, в «свободные деньги» нет */
+      var liquid = this.cash() + this.reserved;
+
       return {
         loansTotal: loansTotal,
         depositsTotal: depositsTotal,
+        liquid: liquid,
         h1: loansTotal > 0 ? (this.capital / loansTotal) * 100 : 999,
-        h2: depositsTotal > 0 ? (this.cash() / depositsTotal) * 100 : 999,
-        h3: depositsTotal > 0 ? ((this.cash() + loansTotal) / depositsTotal) * 100 : 999
+        h2: depositsTotal > 0 ? (liquid / depositsTotal) * 100 : 999,
+        h3: depositsTotal > 0 ? ((liquid + loansTotal) / depositsTotal) * 100 : 999
       };
     },
 

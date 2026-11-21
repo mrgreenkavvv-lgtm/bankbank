@@ -1598,11 +1598,17 @@
             '<div class="liq-row"><span class="muted">В резерве</span><b class="num">' + money(res) + '</b></div>' +
             '<div class="hr"></div>' +
             '<div class="liq-row"><span class="muted">Н1 сейчас</span><b class="num">' + rateLabel(Math.min(ratios.h1, 999)) + '</b></div>' +
-            '<div class="small muted" style="margin-top:6px">Резерв учитывается в числителе Н1, но замораживается: эти деньги нельзя выдать в кредит.</div>' +
+            '<div class="liq-row"><span class="muted">Н2 без резерва</span><b class="num muted">' +
+              (state.depositsBody() > 0
+                ? rateLabel(Math.round((state.cash() / state.depositsBody()) * 1000) / 10)
+                : '—') + '</b></div>' +
+            '<div class="liq-row"><span class="muted">Н2 с резервом</span><b class="num">' +
+              (ratios.h2 > 900 ? '—' : rateLabel(Math.round(ratios.h2 * 10) / 10)) + '</b></div>' +
+            '<div class="small muted" style="margin-top:6px">Резерв входит в Н2 и Н3 — им можно рассчитаться с вкладчиком, но нельзя выдать кредит. В свободных деньгах он не учитывается.</div>' +
             '<div class="hr"></div>' +
             '<input type="number" min="0" step="100000" placeholder="Сумма, ₽" data-reserve-sum aria-label="Сумма резерва">' +
             '<div class="row" style="gap:8px;margin-top:8px">' +
-              '<button class="btn btn-primary" type="button" data-reserve-add>Отправить в резерв</button>' +
+              '<button class="btn btn-primary" type="button" data-reserve-add title="поднимет Н2/Н3, уменьшит свободные деньги">Отправить в резерв</button>' +
               '<button class="btn" type="button" data-reserve-remove>Вывести из резерва</button>' +
             '</div>' +
           '</div>' +
@@ -1613,7 +1619,7 @@
           '<div class="card-h"><h2>Зачем это</h2><div class="r">регулятор</div></div>' +
           '<div class="card-b small muted" style="line-height:1.5">' +
             'Н1 — достаточность капитала: капитал к выданным кредитам. На проверке ЦБ минимум 8%.<br><br>' +
-            'Резерв повышает Н1, но уменьшает сумму, доступную для выдачи кредитов и МБК. ' +
+            'Резерв входит в Н2 и Н3 и уменьшает сумму, доступную для выдачи кредитов и МБК. ' +
             'Держите его, когда ждёте проверку или готовитесь к оттоку вкладов.' +
           '</div>' +
         '</section>' +
