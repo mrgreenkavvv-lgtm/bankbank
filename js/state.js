@@ -11,7 +11,7 @@
 
   var SAVE_KEY = 'bank-save';
   var SAVE_VERSION = 2;
-  var APP_VERSION = 'v2.13.0';   // синхронизировать с VERSION в sw.js
+  var APP_VERSION = 'v2.14.0';   // синхронизировать с VERSION в sw.js
 
   function nbsp(value) {
     return String(value).replace(/\u00A0/g, ' ');
@@ -141,6 +141,44 @@
     ludoman: { name: 'Лудоман', effects: 'шанс баффа +10% · лояльность падает быстрее' }
   };
 
+  /* этапы банка: всё, что открывается вместе с лицензией */
+  var STAGES = [
+    null,
+    { name: 'Ларёк', capital: 0, branches: 1, cost: 0,
+      branchesMax: 3, queueBase: 15, managersMax: 3, h1Min: 8, inspectDays: 180,
+      products: ['consumer'], treasury: ['rates', 'liquidity'] },
+    { name: 'Городской банк', capital: 50e6, branches: 3, cost: 10e6,
+      branchesMax: 8, queueBase: 25, managersMax: 8, h1Min: 8.5, inspectDays: 180,
+      products: ['consumer', 'mortgage'], treasury: ['rates', 'liquidity', 'invest'] },
+    { name: 'Региональный', capital: 200e6, branches: 5, cost: 50e6,
+      branchesMax: 14, queueBase: 40, managersMax: 14, h1Min: 9, inspectDays: 150,
+      products: ['consumer', 'mortgage', 'corporate'], treasury: ['rates', 'liquidity', 'invest'] },
+    { name: 'Федеральный', capital: 500e6, branches: 8, cost: 120e6,
+      branchesMax: 20, queueBase: 55, managersMax: 22, h1Min: 9.5, inspectDays: 150,
+      products: ['consumer', 'mortgage', 'corporate'], treasury: ['rates', 'liquidity', 'invest', 'fx'] },
+    { name: 'Национальный', capital: 1e9, branches: 12, cost: 300e6,
+      branchesMax: 28, queueBase: 75, managersMax: 32, h1Min: 10, inspectDays: 120,
+      products: ['consumer', 'mortgage', 'corporate', 'syndicated'],
+      treasury: ['rates', 'liquidity', 'invest', 'fx'] },
+    { name: 'Международный', capital: 2e9, branches: 16, cost: 700e6,
+      branchesMax: 40, queueBase: 100, managersMax: 45, h1Min: 10.5, inspectDays: 120,
+      products: ['consumer', 'mortgage', 'corporate', 'syndicated', 'foreign'],
+      treasury: ['rates', 'liquidity', 'invest', 'fx'] },
+    { name: 'Мировой', capital: 5e9, branches: 22, cost: 1.5e9,
+      branchesMax: 60, queueBase: 130, managersMax: 60, h1Min: 11, inspectDays: 90,
+      products: ['consumer', 'mortgage', 'corporate', 'syndicated', 'foreign'],
+      treasury: ['rates', 'liquidity', 'invest', 'fx'] }
+  ];
+
+  /* продукты: доля капитала, срок, риск, надбавка к ставке, вес */
+  var PRODUCTS = {
+    consumer:  { label: 'Потребкредит', min: 0.02, max: 0.08, termMin: 6, termMax: 36, riskMin: 1, riskMax: 4, rate: 0, weight: 0.60 },
+    mortgage:  { label: 'Ипотека', min: 0.04, max: 0.12, termMin: 60, termMax: 180, riskMin: 1, riskMax: 2, rate: -3, weight: 0.25 },
+    corporate: { label: 'Корпоратив', min: 0.06, max: 0.20, termMin: 12, termMax: 48, riskMin: 2, riskMax: 4, rate: 1, weight: 0.25 },
+    syndicated:{ label: 'Синдикат', min: 0.15, max: 0.40, termMin: 36, termMax: 60, riskMin: 2, riskMax: 3, rate: 0.5, weight: 0.10 },
+    foreign:   { label: 'Внешний', min: 0.05, max: 0.15, termMin: 12, termMax: 36, riskMin: 3, riskMax: 5, rate: 2, weight: 0.20 }
+  };
+
   var NOTIFY_CATEGORY = {
     loan: 'money', deposit: 'money', default: 'money', closed: 'money', month: 'money',
     treasury: 'money', bankrupt: 'money', stock: 'competitor',
@@ -192,19 +230,48 @@
     };
   }
 
+  /* выбор продукта по весам среди доступных этапу */
+  function pickProduct() {
+    var ids = GameState.availableProducts();
+    var total = 0;
+    ids.forEach(function (id) { total += (PRODUCTS[id] || {}).weight || 0; });
+
+    var roll = Math.random() * total;
+    for (var i = 0; i < ids.length; i += 1) {
+      var p = PRODUCTS[ids[i]];
+      if (!p) continue;
+      roll -= p.weight;
+      if (roll <= 0) return ids[i];
+    }
+    return ids[0];
+  }
+
   function randomClient(day, forcedType) {
     var name = CLIENT_NAMES[Math.floor(Math.random() * CLIENT_NAMES.length)];
     var type = forcedType || (Math.random() < 0.66 ? 'loan' : 'deposit');
     /* сумма — доля собственного капитала, иначе поток теряет смысл на крупном банке */
     var equity = Math.max(500000, GameState.capital || 500000);
-    var amount = Math.round((equity * (0.02 + Math.random() * 0.06)) / 50000) * 50000;
+
+    var productId = type === 'loan' ? pickProduct() : null;
+    var product = productId ? PRODUCTS[productId] : null;
+
+    var lo = product ? product.min : 0.02;
+    var hi = product ? product.max : 0.08;
+    var amount = Math.round((equity * (lo + Math.random() * (hi - lo))) / 50000) * 50000;
     amount = Math.max(50000, amount);
+
     var client = makeClient(day, name, type, amount);
 
-    /* ставка клиента — вокруг базовой ставки игрока */
+    if (product) {
+      client.product = productId;
+      client.term = product.termMin + Math.floor(Math.random() * (product.termMax - product.termMin + 1));
+      client.risk = product.riskMin + Math.floor(Math.random() * (product.riskMax - product.riskMin + 1));
+    }
+
+    /* ставка клиента — вокруг базовой ставки игрока, со сдвигом продукта */
     var base = type === 'loan' ? GameState.playerLoanRate : GameState.playerDepositRate;
     var spread = type === 'loan' ? 3 : 1.5;
-    client.rate = round2(base + (Math.random() - 0.5) * 2 * spread);
+    client.rate = round2(base + (product ? product.rate : 0) + (Math.random() - 0.5) * 2 * spread);
 
     return client;
   }
@@ -247,8 +314,10 @@
       var h2 = ratios.h2;
       var h3 = ratios.h3;
 
+      var h1Min = this.stageInfo().h1Min || 8;
+
       var rows = [
-        { label: 'Н1 · достаточность капитала', fact: h1, min: 8, fine: 450000, ok: h1 >= 8 },
+        { label: 'Н1 · достаточность капитала', fact: h1, min: h1Min, fine: 450000, ok: h1 >= h1Min },
         { label: 'Н2 · мгновенная ликвидность', fact: h2, min: 15, fine: 320000, ok: h2 >= 15 },
         { label: 'Н3 · текущая ликвидность', fact: h3, min: 50, fine: 200000, ok: h3 >= 50 }
       ];
@@ -280,7 +349,8 @@
       };
 
       this.inspecting = true;
-      this.nextInspectionDay = this.dayNumber + ((this.bonuses && this.bonuses.inspectionDays) || 180);
+      this.nextInspectionDay = this.dayNumber +
+        ((this.bonuses && this.bonuses.inspectionDays) || this.stageInfo().inspectDays || 180);
       this.paused = true;
 
       this.log.push({
@@ -739,18 +809,56 @@
     },
 
     /* ---------- Уровни банка ---------- */
+    stageInfo: function () {
+      return STAGES[this.bankStage] || STAGES[1];
+    },
+
     stageName: function () {
-      return this.stageNames[this.bankStage - 1] || 'Ларёк';
+      return this.stageInfo().name;
+    },
+
+    stageMaxBranches: function () {
+      return this.stageInfo().branchesMax;
+    },
+
+    stageManagersMax: function () {
+      return this.stageInfo().managersMax;
+    },
+
+    /* продукты, доступные на текущем этапе */
+    availableProducts: function () {
+      return this.stageInfo().products || ['consumer'];
+    },
+
+    treasuryTabs: function () {
+      return this.stageInfo().treasury || ['rates', 'liquidity'];
+    },
+
+    /* лимит очереди считается, а не накапливается */
+    recalcQueue: function () {
+      var base = this.stageInfo().queueBase || 15;
+      var subs = this.competitors ? this.competitors.filter(function (c) { return c.status === 'subsidiary'; }).length : 0;
+      this.queueLimit = base + 10 * Math.max(0, this.branches - 1) + 10 * subs;
+      return this.queueLimit;
     },
 
     nextStage: function () {
-      return this.stageUpgrades[this.bankStage] || null;
+      var nxt = STAGES[this.bankStage + 1];
+      if (!nxt) return null;
+      return {
+        to: this.bankStage + 1,
+        name: nxt.name,
+        capital: nxt.capital,
+        branches: nxt.branches,
+        cost: nxt.cost,
+        info: nxt
+      };
     },
 
     canUpgradeStage: function () {
       var next = this.nextStage();
       if (!next) return { ok: false, reason: 'max' };
-      if (this.liquidFunds() < next.capital) {
+      if (this.liquidFunds() < next.cost) {
         return { ok: false, reason: 'capital', need: next.capital, next: next };
       }
       if (this.branches < next.branches) {
@@ -766,6 +874,8 @@
       var next = check.next;
       this.capital -= next.cost;
       this.bankStage = next.to;
+      this.recalcQueue();
+      this.recalcFlow();
 
       this.log.push({
         day: this.dayNumber,
@@ -1764,7 +1874,8 @@
 
     /* ---------- Найм ---------- */
     makeCandidate: function () {
-      var level = 5 + Math.floor(Math.random() * 86);
+      var stageFloor = [0, 5, 10, 20, 30, 40, 50][this.bankStage] || 5;
+      var level = stageFloor + Math.floor(Math.random() * (91 - stageFloor));
       var jitter = function (base) {
         return Math.max(5, Math.min(99, base + Math.round((Math.random() - 0.5) * 30)));
       };
@@ -1778,7 +1889,7 @@
       var potential;
       var potentialMax;
 
-      if (roll < 0.02) {
+      if (roll < 0.02 + 0.005 * (this.bankStage - 1)) {
         potential = 'genius';
         potentialMax = 100;
       } else if (roll < 0.52) {
@@ -1825,6 +1936,16 @@
         if (this.candidates[i].id === id) idx = i;
       }
       if (idx < 0) return { ok: false, error: 'not-found' };
+
+      if (this.managers.length >= this.stageManagersMax()) {
+        var nxtStage = this.nextStage();
+        return {
+          ok: false,
+          error: 'staff',
+          need: nxtStage ? nxtStage.name : 'максимум',
+          limit: this.stageManagersMax()
+        };
+      }
 
       var cand = this.candidates[idx];
       var upfront = cand.salary;                 // первый месяц вперёд
@@ -1975,6 +2096,16 @@
     },
 
     openBranch: function () {
+      if (this.branches >= this.stageMaxBranches()) {
+        var nxt = this.nextStage();
+        return {
+          ok: false,
+          error: 'stage',
+          need: nxt ? nxt.name : 'максимум',
+          limit: this.stageMaxBranches()
+        };
+      }
+
       var price = this.branchPrice();
       if (this.liquidFunds() < price) {
         return { ok: false, error: 'money', need: price, available: this.liquidFunds() };
@@ -1982,7 +2113,7 @@
 
       this.capital -= price;
       this.branches += 1;
-      this.queueLimit += 10;
+      this.recalcQueue();
       this.recalcFlow();
 
       this.log.push({
@@ -2770,7 +2901,7 @@
           });
         }
         if (Number(data.branches)) this.branches = Number(data.branches);
-        if (Number(data.queueLimit)) this.queueLimit = Number(data.queueLimit);
+        this.recalcQueue();   // лимит очереди считается от этапа и филиалов
         if (typeof data.flowBonus === 'number') this.flowBonus = data.flowBonus;
         this.recalcFlow();
         if (typeof data.clientAcc === 'number') this.clientAcc = data.clientAcc;

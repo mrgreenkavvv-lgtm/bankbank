@@ -935,7 +935,7 @@
   }
 
   /* ---------- Процентная политика ---------- */
-  function ratesHint(kind) {
+  function ratesHint(kind, value) {
     var best = kind === 'loan' ? state.bestLoanRate() : state.bestDepositRate();
     var mine = kind === 'loan' ? state.playerLoanRate : state.playerDepositRate;
     if (best === null) return 'конкурентов нет — ставку можно не трогать';
@@ -1145,14 +1145,24 @@
           '<div class="card-h"><h2>Процентная политика</h2><div class="r">сравнение с рынком</div></div>' +
           '<div class="card-b rates">' +
             '<div class="rate-block">' +
-              '<div class="between"><span>Кредиты</span><b class="num" data-rate-value="loan">' + rateLabel(state.playerLoanRate) + '</b></div>' +
+              '<div class="between"><span>Кредиты</span>' +
+                '<span class="row" style="gap:8px;align-items:center">' +
+                  '<input class="vip-input" type="number" min="5" max="35" step="0.5" value="' + state.playerLoanRate + '" data-rate-num="loan" aria-label="Ставка по кредитам, число">' +
+                  '<b class="num" data-rate-value="loan">' + rateLabel(state.playerLoanRate) + '</b>' +
+                '</span>' +
+              '</div>' +
               '<input type="range" min="5" max="35" step="0.5" value="' + state.playerLoanRate + '" data-rate="loan" aria-label="Ставка по кредитам">' +
-              '<div class="small muted">' + ratesHint('loan') + '</div>' +
+              '<div class="small muted" data-rate-hint="loan">' + ratesHint('loan') + '</div>' +
             '</div>' +
             '<div class="rate-block">' +
-              '<div class="between"><span>Вклады</span><b class="num" data-rate-value="deposit">' + rateLabel(state.playerDepositRate) + '</b></div>' +
+              '<div class="between"><span>Вклады</span>' +
+                '<span class="row" style="gap:8px;align-items:center">' +
+                  '<input class="vip-input" type="number" min="1" max="25" step="0.5" value="' + state.playerDepositRate + '" data-rate-num="deposit" aria-label="Ставка по вкладам, число">' +
+                  '<b class="num" data-rate-value="deposit">' + rateLabel(state.playerDepositRate) + '</b>' +
+                '</span>' +
+              '</div>' +
               '<input type="range" min="1" max="25" step="0.5" value="' + state.playerDepositRate + '" data-rate="deposit" aria-label="Ставка по вкладам">' +
-              '<div class="small muted">' + ratesHint('deposit') + '</div>' +
+              '<div class="small muted" data-rate-hint="deposit">' + ratesHint('deposit') + '</div>' +
             '</div>' +
           '</div>' +
         '</section>' +
@@ -1296,6 +1306,9 @@
     var panel = document.querySelector('[data-ui="treasury-panel"]');
     if (!panel) return;
 
+    var openTabs = state.treasuryTabs();
+    if (openTabs.indexOf(treasuryTab) < 0) treasuryTab = openTabs[0];
+
     var body = treasuryTab === 'rates' ? treasuryRates()
       : treasuryTab === 'liquidity' ? treasuryLiquidity()
       : treasuryTab === 'fx' ? treasuryFx()
@@ -1306,8 +1319,13 @@
     var tabs = document.querySelectorAll('[data-ttab]');
     Array.prototype.forEach.call(tabs, function (btn) {
       var on = btn.dataset.ttab === treasuryTab;
+      var allowed = openTabs.indexOf(btn.dataset.ttab) >= 0;
+
       btn.classList.toggle('is-on', on);
       btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      btn.classList.toggle('is-locked', !allowed);
+      btn.setAttribute('aria-disabled', allowed ? 'false' : 'true');
+      btn.title = allowed ? '' : 'Откроется на следующем этапе банка';
     });
   }
 
@@ -1318,6 +1336,13 @@
     document.addEventListener('click', function (event) {
       var tab = event.target.closest && event.target.closest('[data-ttab]');
       if (tab) {
+        if (state.treasuryTabs().indexOf(tab.dataset.ttab) < 0) {
+          var next = state.nextStage();
+          if (typeof global.showToast === 'function') {
+            global.showToast('Откроется на этапе «' + (next ? next.name : 'следующем') + '»');
+          }
+          return;
+        }
         treasuryTab = tab.dataset.ttab;
         renderTreasury();
         return;
@@ -2124,7 +2149,26 @@
   }
 
   function bindRates() {
+    /* предпросмотр: цифры и подсказка меняются, состояние не трогаем */
     document.addEventListener('input', function (event) {
+      var input = event.target.closest && event.target.closest('[data-rate]');
+      if (input) {
+        previewRate(input.dataset.rate, Number(input.value));
+        return;
+      }
+
+      var num = event.target.closest && event.target.closest('[data-rate-num]');
+      if (num) {
+        var kindNum = num.dataset.rateNum;
+        var v = Number(num.value);
+        var slider = document.querySelector('[data-rate="' + kindNum + '"]');
+        if (slider && v) slider.value = v;
+        previewRate(kindNum, v);
+      }
+    });
+
+    /* применение: одно сохранение на отпускание */
+    document.addEventListener('change', function (event) {
       var input = event.target.closest && event.target.closest('[data-rate]');
       if (!input) return;
 
@@ -2134,13 +2178,22 @@
       if (kind === 'loan') state.setLoanRate(value);
       else state.setDepositRate(value);
 
-      var label = document.querySelector('[data-rate-value="' + kind + '"]');
-      if (label) label.textContent = rateLabel(value);
-
-      /* подсказка и шапка карточки */
+      previewRate(kind, value);
       last.rates = null;
       renderRates();
     });
+  }
+
+  /* подсказка на лету, без записи в состояние */
+  function previewRate(kind, value) {
+    var label = document.querySelector('[data-rate-value="' + kind + '"]');
+    if (label) label.textContent = rateLabel(value);
+
+    var hint = document.querySelector('[data-rate-hint="' + kind + '"]');
+    if (hint) hint.textContent = ratesHint(kind, value);
+
+    var num = document.querySelector('[data-rate-num="' + kind + '"]');
+    if (num && Number(num.value) !== value) num.value = value;
   }
 
   function bindStocks() {
